@@ -20,4 +20,4 @@ pgvector>=0.3.2
 
 # Utilities & Security
 requests>=2.32.3
-pip-audit>=2.7.3
+pip-audit>=2.7.

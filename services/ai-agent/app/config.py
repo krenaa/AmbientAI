@@ -1,6 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolves: ambientdesk-ai/.env
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+ENV_PATH = ROOT_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -12,7 +17,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
 
     # Internal Security (Django to FastAPI auth)
-    AI_AGENT_INTERNAL_TOKEN: str = "change-me-to-a-secure-random-secret"
+    AI_AGENT_INTERNAL_TOKEN: str = "ambientdesk-internal-secret-token"
 
     # LLM API Keys
     GROQ_API_KEY: Optional[str] = None
@@ -33,7 +38,7 @@ class Settings(BaseSettings):
     ]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_PATH),
         env_file_encoding="utf-8",
         extra="ignore",
     )
