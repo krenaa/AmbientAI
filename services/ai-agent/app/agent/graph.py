@@ -1,8 +1,10 @@
 import logging
 from typing import Dict, Any, Literal
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import interrupt
 
 from app.agent.state import AgentState, TriageOutput
 from app.agent.llm import get_resilient_llm
@@ -12,19 +14,18 @@ logger = logging.getLogger("ambientdesk.graph")
 
 TRIAGE_SYSTEM_PROMPT = """You are the ambientdesk Task Triage Specialist.
 Analyze the user's input and classify the intent into one of:
-- direct_answer: General reasoning, conceptual explanations, or simple chit-chat not requiring tools.
-- research: Involves current facts, external lookups, URLs, news, or deep queries requiring web search.
+- direct_answer: General reasoning, conceptual explanations, or simple chit-chat.
+- research: Involves web searches, facts, or live lookups.
 - code_generation: Involves writing, debugging, or analyzing software code.
-- summarization: Condensing documents, text, or multi-paragraph inputs.
+- summarization: Condensing documents or text.
+- sensitive_action: Tasks like sending emails, making financial transactions, database writes, or destructive operations.
 
-Determine if external tools are strictly necessary."""
+If the task asks to send an email, perform an external transaction, or delete resources, set `is_sensitive=True`."""
 
 
 async def triage_node(state: AgentState) -> Dict[str, Any]:
-    """Classifies user request using structured LLM output with fallback."""
-    structured_llm = get_resilient_llm(
-        temperature=0.0, structured_schema=TriageOutput
-    )
+    """Classifies user request and checks for sensitive actions."""
+    structured_llm = get_resilient_llm(temperature=0.0, structured_schema=TriageOutput)
 
     user_messages = [m for m in state["messages"] if isinstance(m, HumanMessage)]
     latest_query = user_messages[-1].content if user_messages else "No input"
@@ -36,24 +37,49 @@ async def triage_node(state: AgentState) -> Dict[str, Any]:
 
     try:
         triage_result: TriageOutput = await structured_llm.ainvoke(messages)
-        return {"triage": triage_result}
+        is_sensitive = triage_result.is_sensitive or (triage_result.category == "sensitive_action")
+        return {
+            "triage": triage_result,
+            "requires_approval": is_sensitive,
+        }
     except Exception as e:
-        logger.warning(
-            f"Structured triage failed, falling back to default direct_answer: {e}"
-        )
+        logger.warning(f"Structured triage failed, using fallback: {e}")
         return {
             "triage": TriageOutput(
                 category="direct_answer",
                 requires_tools=False,
+                is_sensitive=False,
                 summary=str(latest_query)[:100],
-            )
+            ),
+            "requires_approval": False,
         }
 
 
-async def agent_node(state: AgentState) -> Dict[str, Any]:
-    """Core reasoning node: calls tools or generates final response."""
-    llm_with_tools = get_resilient_llm(temperature=0.2, tools=ALL_TOOLS)
+async def approval_node(state: AgentState) -> Dict[str, Any]:
+    """Pauses graph execution using interrupt() when human approval is required."""
+    if state.get("requires_approval") and state.get("approval_status") is None:
+        user_approval_data = interrupt({
+            "question": "This action involves sensitive execution. Do you approve?",
+            "task_id": state.get("task_id"),
+            "action_summary": state["triage"].summary if state.get("triage") else "Sensitive Operation",
+        })
+        
+        # When resumed, interrupt() returns the value passed during resumption
+        approved = user_approval_data.get("approved", False) if isinstance(user_approval_data, dict) else bool(user_approval_data)
+        status = "approved" if approved else "rejected"
+        return {"approval_status": status}
+    
+    return {}
 
+
+async def agent_node(state: AgentState) -> Dict[str, Any]:
+    """Executes the task logic or handles rejected approvals."""
+    if state.get("approval_status") == "rejected":
+        return {
+            "messages": [AIMessage(content="Operation cancelled by user: Human approval was rejected.")]
+        }
+
+    llm_with_tools = get_resilient_llm(temperature=0.2, tools=ALL_TOOLS)
     system_instruction = (
         "You are ambientdesk AI, a capable, precise multi-agent assistant.\n"
         "Execute the user's task clearly and concisely. Use tools when factual lookup is needed."
@@ -65,24 +91,45 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
     return {"messages": [response]}
 
 
+def route_after_triage(state: AgentState) -> Literal["approval", "agent"]:
+    """Routes to approval node if sensitive, else directly to agent node."""
+    if state.get("requires_approval") and state.get("approval_status") is None:
+        return "approval"
+    return "agent"
+
+
 def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
-    """Determines whether agent requested tool execution or is ready to finish."""
     last_message = state["messages"][-1]
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
     return END
 
 
+# Checkpointer for state snapshot persistence across pauses/resumes
+checkpointer = MemorySaver()
+
+
 def build_graph():
-    """Compiles the LangGraph state machine workflow."""
+    """Compiles the LangGraph state machine workflow with checkpointing and HITL."""
     workflow = StateGraph(AgentState)
 
     workflow.add_node("triage", triage_node)
+    workflow.add_node("approval", approval_node)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", ToolNode(ALL_TOOLS))
 
     workflow.add_edge(START, "triage")
-    workflow.add_edge("triage", "agent")
+
+    workflow.add_conditional_edges(
+        "triage",
+        route_after_triage,
+        {
+            "approval": "approval",
+            "agent": "agent",
+        },
+    )
+
+    workflow.add_edge("approval", "agent")
 
     workflow.add_conditional_edges(
         "agent",
@@ -94,7 +141,8 @@ def build_graph():
     )
 
     workflow.add_edge("tools", "agent")
-    return workflow.compile()
+
+    return workflow.compile(checkpointer=checkpointer)
 
 
-agent_graph = build_graph()   
+agent_graph = build_graph()
