@@ -1,11 +1,26 @@
 import logging
 import time
-import requests
+from asgiref.sync import async_to_sync
 from celery import shared_task
+from channels.layers import get_channel_layer
+import requests
 from django.conf import settings
 from .models import AgentTask, TaskExecutionLog, TaskStatus
 
 logger = logging.getLogger("ambientdesk.celery_tasks")
+
+
+def broadcast_task_event(task_id: str, payload: dict):
+    """Utility to broadcast an update to the task's WebSocket group."""
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f"task_{task_id}",
+            {
+                "type": "task_update",
+                "data": payload,
+            },
+        )
 
 
 @shared_task(
@@ -15,7 +30,6 @@ logger = logging.getLogger("ambientdesk.celery_tasks")
     autoretry_for=(requests.RequestException,),
 )
 def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
-    """Dispatches user prompt to FastAPI AI Agent Service and records execution states."""
     try:
         task = AgentTask.objects.get(id=task_id)
     except AgentTask.DoesNotExist:
@@ -25,11 +39,14 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
     task.status = TaskStatus.PROCESSING
     task.save(update_fields=["status", "updated_at"])
 
-    TaskExecutionLog.objects.create(
-        task=task,
-        node_name="celery_dispatcher",
-        message="Task picked up from Redis queue and dispatched to AI agent.",
-        metadata={"retry_count": self.request.retries},
+    # Broadcast processing status over WebSocket
+    broadcast_task_event(
+        str(task.id),
+        {
+            "task_id": str(task.id),
+            "status": task.status,
+            "message": "Task running in background queue...",
+        },
     )
 
     url = f"{settings.AI_AGENT_SERVICE_URL}/tasks/run"
@@ -61,22 +78,35 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
             TaskExecutionLog.objects.create(
                 task=task,
                 node_name="ai_agent_response",
-                message=f"AI Agent returned status: {task.status}",
+                message=f"AI Agent finished with status: {task.status}",
                 metadata={"triage_category": task.triage_category, "latency_ms": elapsed_ms},
+            )
+
+            # Broadcast final completion/HITL approval state
+            broadcast_task_event(
+                str(task.id),
+                {
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "triage_category": task.triage_category,
+                    "output": task.output,
+                    "approval_prompt": task.approval_prompt,
+                    "execution_time_ms": elapsed_ms,
+                },
             )
         else:
             task.status = TaskStatus.FAILED
-            task.error_message = (
-                f"Agent service HTTP {response.status_code}: {response.text}"
-            )
+            task.error_message = f"Agent service error {response.status_code}: {response.text}"
             task.execution_time_ms = elapsed_ms
             task.save()
 
-            TaskExecutionLog.objects.create(
-                task=task,
-                node_name="ai_agent_error",
-                message="Non-200 response from AI Agent service",
-                metadata={"status_code": response.status_code, "body": response.text[:500]},
+            broadcast_task_event(
+                str(task.id),
+                {
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "error_message": task.error_message,
+                },
             )
 
     except Exception as exc:
@@ -86,9 +116,12 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
         task.execution_time_ms = elapsed_ms
         task.save()
 
-        TaskExecutionLog.objects.create(
-            task=task,
-            node_name="celery_dispatcher_exception",
-            message=f"Execution error: {str(exc)}",
+        broadcast_task_event(
+            str(task.id),
+            {
+                "task_id": str(task.id),
+                "status": task.status,
+                "error_message": str(exc),
+            },
         )
         raise self.retry(exc=exc)
