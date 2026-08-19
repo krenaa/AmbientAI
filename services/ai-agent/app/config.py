@@ -1,9 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
+import urllib.parse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolves: ambientdesk-ai/.env
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 ENV_PATH = ROOT_DIR / ".env"
 
@@ -24,13 +24,26 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
 
+    # Database
+    POSTGRES_DB: str = "ambientdesk_db"
+    POSTGRES_USER: str = "ambientdesk_user"
+    POSTGRES_PASSWORD: str = "ambientdesk_secret"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+
+    @property
+    def postgres_connection_string(self) -> str:
+        # Safely URL-encode credentials
+        user = urllib.parse.quote_plus(self.POSTGRES_USER)
+        password = urllib.parse.quote_plus(self.POSTGRES_PASSWORD)
+        return f"postgresql+psycopg://{user}:{password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
     # LangSmith Observability
     LANGSMITH_TRACING: bool = False
     LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
     LANGSMITH_API_KEY: Optional[str] = None
     LANGSMITH_PROJECT: str = "ambientdesk-prod"
 
-    # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:8000",

@@ -25,7 +25,7 @@ def get_fallback_llm(temperature: float = 0.2) -> Optional[BaseChatModel]:
     """Returns Google Gemini Chat Model if API key is configured."""
     if settings.GOOGLE_API_KEY:
         return ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=temperature,
             max_retries=2,

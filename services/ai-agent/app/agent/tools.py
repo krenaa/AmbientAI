@@ -1,8 +1,9 @@
 import logging
-from typing import List, Dict, Any
+from typing import List
 from langchain_core.tools import tool
 from tavily import TavilyClient
 from app.config import get_settings
+from app.agent.vector_store import get_vector_store
 
 logger = logging.getLogger("ambientdesk.tools")
 settings = get_settings()
@@ -31,7 +32,6 @@ def web_search(query: str) -> str:
             title = r.get("title", "No Title")
             url = r.get("url", "")
             content = r.get("content", "")
-            # Basic prompt injection guardrail: strip excessive control tokens/delimiters
             sanitized_content = content.replace("```", "'''")
             formatted_results.append(
                 f"Source: {title}\nURL: {url}\nSnippet: {sanitized_content}\n"
@@ -43,5 +43,31 @@ def web_search(query: str) -> str:
         return f"Error executing web search: {str(e)}"
 
 
+@tool
+def knowledge_base_retrieval(query: str) -> str:
+    """Search internal documentation, indexed company data, and private context using pgvector RAG.
+
+    Args:
+        query: The semantic search query string.
+    """
+    try:
+        vector_store = get_vector_store()
+        results = vector_store.similarity_search(query, k=4)
+
+        if not results:
+            return "No matching internal knowledge documents found."
+
+        formatted = []
+        for i, doc in enumerate(results, 1):
+            sanitized = doc.page_content.replace("```", "'''")
+            source = doc.metadata.get("source", "internal_doc")
+            formatted.append(f"[{i}] (Source: {source}):\n{sanitized}")
+
+        return "\n\n---\n\n".join(formatted)
+    except Exception as e:
+        logger.error(f"Error querying vector store: {e}")
+        return f"Error retrieving internal documents: {str(e)}"
+
+
 # Export registered agent tools
-ALL_TOOLS = [web_search]
+ALL_TOOLS = [web_search, knowledge_base_retrieval]
