@@ -1,0 +1,25 @@
+{
+  "folders": [
+    {
+      "name": "Frontend",
+      "path": "frontend"
+    },
+    {
+      "name": "AI Agent",
+      "path": "services/ai-agent"
+    },
+    {
+      "name": "Backend",
+      "path": "services/backend"
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "files.watcherExclude": {
+      "**/node_modules/**": true,
+      "**/.venv/**": true,
+      "**/__pycache__/**": true
+    }
+  }
+}
