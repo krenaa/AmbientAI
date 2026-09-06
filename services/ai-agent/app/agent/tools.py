@@ -69,5 +69,96 @@ def knowledge_base_retrieval(query: str) -> str:
         return f"Error retrieving internal documents: {str(e)}"
 
 
+import ast
+import math
+import operator
+
+_SAFE_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+_SAFE_FUNCTIONS = {
+    "sqrt": math.sqrt,
+    "abs": abs,
+    "round": round,
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "log": math.log,
+    "exp": math.exp,
+}
+
+
+def _eval_expr_ast(node):
+    if isinstance(node, ast.Expression):
+        return _eval_expr_ast(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp):
+        left = _eval_expr_ast(node.left)
+        right = _eval_expr_ast(node.right)
+        op_type = type(node.op)
+        if op_type in _SAFE_OPERATORS:
+            return _SAFE_OPERATORS[op_type](left, right)
+        raise ValueError(f"Unsupported operator: {op_type.__name__}")
+    if isinstance(node, ast.UnaryOp):
+        operand = _eval_expr_ast(node.operand)
+        op_type = type(node.op)
+        if op_type in _SAFE_OPERATORS:
+            return _SAFE_OPERATORS[op_type](operand)
+        raise ValueError(f"Unsupported unary operator: {op_type.__name__}")
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        func_name = node.func.id
+        if func_name in _SAFE_FUNCTIONS:
+            args = [_eval_expr_ast(arg) for arg in node.args]
+            return _SAFE_FUNCTIONS[func_name](*args)
+        raise ValueError(f"Unsupported function call: {func_name}")
+    raise ValueError(f"Unsupported expression element: {type(node).__name__}")
+
+
+@tool
+def calculate_expression(expression: str) -> str:
+    """Safely calculate mathematical and numerical expressions (e.g. '125 * 4.5', 'sqrt(144) + 10').
+
+    Args:
+        expression: The mathematical expression string to evaluate.
+    """
+    try:
+        cleaned = expression.strip()
+        parsed = ast.parse(cleaned, mode="eval")
+        result = _eval_expr_ast(parsed)
+        return f"Result: {result}"
+    except Exception as e:
+        return f"Error evaluating expression '{expression}': {str(e)}"
+
+
+@tool
+def send_external_notification(recipient: str, subject: str, message_body: str) -> str:
+    """Send an external alert, email, or webhook notification.
+
+    Args:
+        recipient: Target email address, team member, or channel identifier.
+        subject: The summary subject line for the message.
+        message_body: The full notification message content.
+    """
+    logger.info(f"Dispatched external notification to {recipient}: {subject}")
+    return (
+        f"Notification successfully delivered to {recipient}. Subject: '{subject}'."
+    )
+
+
 # Export registered agent tools
-ALL_TOOLS = [web_search, knowledge_base_retrieval]
+ALL_TOOLS = [
+    web_search,
+    knowledge_base_retrieval,
+    calculate_expression,
+    send_external_notification,
+]

@@ -13,11 +13,11 @@ COLLECTION_NAME = "ambientdesk_knowledge"
 
 
 def get_embeddings() -> GoogleGenerativeAIEmbeddings:
-    """Uses Google's gemini-embedding-001 model."""
+    """Uses Google's text-embedding-004 model."""
     if not settings.GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY is required for generating vector embeddings.")
     return GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001",
+        model="models/text-embedding-004",
         google_api_key=settings.GOOGLE_API_KEY,
     )
 

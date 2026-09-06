@@ -19,9 +19,11 @@ class Settings(BaseSettings):
     # Internal Security (Django to FastAPI auth)
     AI_AGENT_INTERNAL_TOKEN: str = "ambientdesk-internal-secret-token"
 
-    # LLM API Keys
+    # LLM API Keys & Models
     GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_MODEL: str = "gemini-2.0-flash"
     TAVILY_API_KEY: Optional[str] = None
 
     # Database

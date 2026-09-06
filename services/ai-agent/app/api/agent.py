@@ -76,7 +76,7 @@ async def run_task(payload: RunTaskRequest) -> TaskResponse:
 
             return TaskResponse(
                 task_id=payload.task_id,
-                status="waiting_for_approval",
+                status="awaiting_approval",
                 triage_category="sensitive_action",
                 output="Task paused: Human approval is required before continuing.",
                 approval_prompt=interrupt_value if isinstance(interrupt_value, dict) else {"message": str(interrupt_value)},

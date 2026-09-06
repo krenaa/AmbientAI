@@ -1,28 +1,93 @@
-import axios from "axios";
+import axios, { type AxiosError } from "axios";
 import type { AgentTask } from "./types";
 
-const API_BASE = "http://localhost:8000/api";
+const getApiBase = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // If running locally in Vite dev mode (port 5173), target Django port 8000
+  if (typeof window !== "undefined" && window.location.port === "5173") {
+    return "http://localhost:8000/api";
+  }
+  return "/api";
+};
 
 export const apiClient = axios.create({
-  baseURL: API_BASE,
+  baseURL: getApiBase(),
   headers: {
     "Content-Type": "application/json",
   },
 });
 
+// Attach Bearer token to all outgoing requests
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("ambient_token");
+  const token = sessionStorage.getItem("ambient_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-export const login = async (email: string, password: string): Promise<string> => {
+// Automatic mid-session expiry handling
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response && error.response.status === 401) {
+      // Clear token automatically so user never has to touch DevTools
+      sessionStorage.removeItem("ambient_token");
+      localStorage.removeItem("ambient_token");
+
+      // Dispatch event to kick App.tsx back to login cleanly
+      window.dispatchEvent(new CustomEvent("ambient_session_expired"));
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const register = async (
+  email: string,
+  password: string,
+  fullName?: string
+): Promise<{ token: string; user?: any }> => {
+  const res = await apiClient.post("/auth/register/", {
+    email,
+    password,
+    full_name: fullName || "",
+  });
+  const token = res.data.access;
+  const user = res.data.user;
+  sessionStorage.setItem("ambient_token", token);
+  if (user) {
+    sessionStorage.setItem("ambient_user", JSON.stringify(user));
+  }
+  return { token, user };
+};
+
+export const login = async (
+  email: string,
+  password: string
+): Promise<{ token: string; user?: any }> => {
   const res = await apiClient.post("/auth/token/", { email, password });
   const token = res.data.access;
-  localStorage.setItem("ambient_token", token);
-  return token;
+  const user = res.data.user;
+  sessionStorage.setItem("ambient_token", token);
+  if (user) {
+    sessionStorage.setItem("ambient_user", JSON.stringify(user));
+  }
+  return { token, user };
+};
+
+export const fetchCurrentUser = async () => {
+  const res = await apiClient.get("/auth/me/");
+  sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
+  return res.data;
+};
+
+export const logout = (): void => {
+  sessionStorage.removeItem("ambient_token");
+  sessionStorage.removeItem("ambient_user");
+  localStorage.removeItem("ambient_token");
+  window.dispatchEvent(new CustomEvent("ambient_session_expired"));
 };
 
 export const fetchTasks = async (): Promise<AgentTask[]> => {

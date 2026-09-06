@@ -105,8 +105,35 @@ def should_continue(state: AgentState) -> Literal["tools", "__end__"]:
     return END
 
 
+def init_checkpointer():
+    """Initializes persistent PostgresSaver or falls back to MemorySaver if unavailable."""
+    try:
+        from psycopg_pool import ConnectionPool
+        from langgraph.checkpoint.postgres import PostgresSaver
+        from app.config import get_settings
+
+        settings = get_settings()
+        conn_string = (
+            f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+            f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+        )
+        pool = ConnectionPool(
+            conninfo=conn_string, max_size=10, kwargs={"autocommit": True}
+        )
+        pool.open()
+        saver = PostgresSaver(pool)
+        saver.setup()
+        logger.info("LangGraph initialized with persistent PostgresSaver.")
+        return saver
+    except Exception as e:
+        logger.warning(
+            f"Could not connect PostgresSaver ({e}), falling back to MemorySaver."
+        )
+        return MemorySaver()
+
+
 # Checkpointer for state snapshot persistence across pauses/resumes
-checkpointer = MemorySaver()
+checkpointer = init_checkpointer()
 
 
 def build_graph():

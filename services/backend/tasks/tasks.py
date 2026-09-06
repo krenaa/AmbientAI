@@ -49,17 +49,24 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
         },
     )
 
-    url = f"{settings.AI_AGENT_SERVICE_URL}/tasks/run"
     headers = {
         "x-internal-token": settings.AI_AGENT_INTERNAL_TOKEN,
         "Content-Type": "application/json",
     }
-    payload = {
-        "task_id": str(task.id),
-        "user_id": str(task.user.id),
-        "prompt": task.prompt,
-        "human_approved": human_approved,
-    }
+
+    if human_approved:
+        url = f"{settings.AI_AGENT_SERVICE_URL}/tasks/resume"
+        payload = {
+            "task_id": str(task.id),
+            "approved": True,
+        }
+    else:
+        url = f"{settings.AI_AGENT_SERVICE_URL}/tasks/run"
+        payload = {
+            "task_id": str(task.id),
+            "user_id": str(task.user.id),
+            "prompt": task.prompt,
+        }
 
     start_time = time.perf_counter()
     try:
@@ -68,10 +75,27 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
 
         if response.status_code == 200:
             data = response.json()
-            task.status = data.get("status", TaskStatus.COMPLETED)
+            raw_status = data.get("status", TaskStatus.COMPLETED)
+            if raw_status in ("waiting_for_approval", "awaiting_approval"):
+                task.status = TaskStatus.AWAITING_APPROVAL
+            else:
+                task.status = raw_status
+
             task.triage_category = data.get("triage_category")
             task.output = data.get("output")
-            task.approval_prompt = data.get("approval_prompt")
+
+            raw_prompt = data.get("approval_prompt")
+            if isinstance(raw_prompt, dict):
+                task.approval_prompt = (
+                    raw_prompt.get("action_summary")
+                    or raw_prompt.get("question")
+                    or raw_prompt.get("message")
+                    or str(raw_prompt)
+                )
+            else:
+                task.approval_prompt = raw_prompt
+
+            task.error_message = None
             task.execution_time_ms = elapsed_ms
             task.save()
 
@@ -92,6 +116,7 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
                     "output": task.output,
                     "approval_prompt": task.approval_prompt,
                     "execution_time_ms": elapsed_ms,
+                    "error_message": None,
                 },
             )
         else:

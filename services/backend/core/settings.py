@@ -111,6 +111,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Django REST Framework & JWT Settings
@@ -132,13 +133,30 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# CORS Configuration
-CORS_ALLOWED_ORIGINS = [
+# CORS & CSRF Configuration
+default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
+    "http://localhost:80",
+    "http://localhost",
 ]
+env_cors = os.getenv("CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOWED_ORIGINS = (
+    [origin.strip() for origin in env_cors.split(",") if origin.strip()]
+    if env_cors
+    else default_origins
+)
 CORS_ALLOW_CREDENTIALS = True
+
+env_csrf = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = (
+    [origin.strip() for origin in env_csrf.split(",") if origin.strip()]
+    if env_csrf
+    else default_origins + ["http://localhost:8000", "http://127.0.0.1:8000"]
+)
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

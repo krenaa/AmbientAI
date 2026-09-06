@@ -4,16 +4,18 @@ from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
 )
+from accounts.views import RegisterView, CustomTokenObtainPairView, CurrentUserView
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     # JWT Auth Endpoints
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/register/", RegisterView.as_view(), name="auth_register"),
+    path("api/auth/token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/me/", CurrentUserView.as_view(), name="auth_me"),
     # Tasks API
     path("api/", include("tasks.urls")),
     # OpenAPI Schema & Docs

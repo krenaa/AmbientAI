@@ -7,7 +7,7 @@ from .serializers import (
     CreateTaskSerializer,
     TaskApprovalSerializer,
 )
-from .tasks import run_ai_agent_task
+from .tasks import run_ai_agent_task, broadcast_task_event
 
 
 class AgentTaskViewSet(viewsets.ModelViewSet):
@@ -63,6 +63,15 @@ class AgentTaskViewSet(viewsets.ModelViewSet):
             task.output = "Action was rejected by the user."
             task.approval_prompt = None
             task.save(update_fields=["status", "output", "approval_prompt", "updated_at"])
+            broadcast_task_event(
+                str(task.id),
+                {
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "output": task.output,
+                    "approval_prompt": None,
+                },
+            )
             msg = "Action rejected by user."
 
         return Response({"detail": msg, "task": AgentTaskSerializer(task).data})
