@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_spectacular",
     "channels",
+    "strawberry_django",
     # Internal apps
     "accounts",
     "tasks",

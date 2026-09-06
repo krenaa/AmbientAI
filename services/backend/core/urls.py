@@ -9,8 +9,13 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+from strawberry.django.views import AsyncGraphQLView
+from core.schema import schema
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # GraphQL Endpoint & GraphiQL IDE
+    path("graphql/", AsyncGraphQLView.as_view(schema=schema), name="graphql"),
     # JWT Auth Endpoints
     path("api/auth/register/", RegisterView.as_view(), name="auth_register"),
     path("api/auth/token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
