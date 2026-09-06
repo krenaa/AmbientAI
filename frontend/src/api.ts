@@ -83,6 +83,16 @@ export const fetchCurrentUser = async () => {
   return res.data;
 };
 
+export const updateProfile = async (data: {
+  full_name?: string;
+  current_password?: string;
+  new_password?: string;
+}) => {
+  const res = await apiClient.patch("/auth/me/", data);
+  sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
+  return res.data;
+};
+
 export const logout = (): void => {
   sessionStorage.removeItem("ambient_token");
   sessionStorage.removeItem("ambient_user");

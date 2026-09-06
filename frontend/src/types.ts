@@ -20,12 +20,21 @@ export interface TaskExecutionLog {
   timestamp: string;
 }
 
+export interface UserStats {
+  total_tasks: number;
+  completed_tasks: number;
+  awaiting_approval: number;
+  total_execution_time_s: number;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
   role: "Admin" | "Member";
   is_staff?: boolean;
+  date_joined?: string;
+  stats?: UserStats;
 }
 
 export interface AgentTask {
