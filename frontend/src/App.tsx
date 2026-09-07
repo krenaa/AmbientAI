@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Bot,
   Send,
-  CheckCircle2,
   AlertCircle,
   Clock,
   Loader2,
@@ -12,7 +11,6 @@ import {
   Database,
   Calculator,
   LogOut,
-  ListTree,
   UserPlus,
   LogIn,
   ChevronDown,
@@ -30,8 +28,12 @@ import {
   ShieldCheck,
   Cpu,
   KeyRound,
+  Plus,
+  Menu,
 } from "lucide-react";
-import type { AgentTask, TaskStatus, UserProfile } from "./types";
+import type { AgentTask, UserProfile } from "./types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useToast } from "./Toast";
 import {
   login,
   register,
@@ -56,22 +58,27 @@ const getWebSocketUrl = (taskId: string): string => {
 
 const SUGGESTED_PROMPTS = [
   {
-    category: "Research",
-    icon: Search,
-    text: "Research the latest advancements in small reasoning models for edge devices",
+    category: "Chained Workflow",
+    icon: Mail,
+    text: "Research top 3 AI agent security best practices and email an executive brief to dev-lead@ambientdesk.ai",
   },
   {
-    category: "Calculation",
+    category: "Guardrail Test",
+    icon: ShieldAlert,
+    text: "Send the quarterly system health report to fenil@#gmail.com",
+  },
+  {
+    category: "Inbox Triage & RAG",
+    icon: Database,
+    text: "Check recent incoming emails for client compliance questions and cross-reference our knowledge base to draft a reply",
+  },
+  {
+    category: "Deterministic Math",
     icon: Calculator,
     text: "Calculate monthly burn rate: 450000 / 18 months with 8.5% annual inflation buffer",
   },
   {
-    category: "Knowledge Base",
-    icon: Database,
-    text: "Retrieve company policy documents on AI agent tool authorization and HITL protocols",
-  },
-  {
-    category: "Action (HITL)",
+    category: "HITL Action",
     icon: ShieldAlert,
     text: "Send external notification to devops-team about upcoming database maintenance window",
   },
@@ -88,11 +95,38 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTask, setSelectedTask] = useState<AgentTask | null>(null);
+  const [isNewChat, setIsNewChat] = useState<boolean>(false);
+  const isNewChatRef = useRef<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [showLogs, setShowLogs] = useState<boolean>(true);
+  const [showLogs, setShowLogs] = useState<boolean>(false);
+  const [showEarlierTurns, setShowEarlierTurns] = useState<boolean>(false);
   const [copied, setCopied] = useState(false);
+  const [outputColorTheme, setOutputColorTheme] = useState<"auto" | "cyan" | "violet" | "amber" | "rose" | "emerald">(() => {
+    return (localStorage.getItem("ambient_output_theme") as any) || "auto";
+  });
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const { showToast } = useToast();
+
+  const startNewChat = () => {
+    isNewChatRef.current = true;
+    setIsNewChat(true);
+    setSelectedTask(null);
+    setPrompt("");
+    setShowEarlierTurns(false);
+    setIsMobileMenuOpen(false);
+    showToast("New chat session started", "info");
+  };
+
+  const selectTask = (task: AgentTask) => {
+    isNewChatRef.current = false;
+    setIsNewChat(false);
+    setSelectedTask(task);
+    setShowEarlierTurns(false);
+    setIsMobileMenuOpen(false);
+  };
 
   // Profile Modal State
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
@@ -101,8 +135,8 @@ export default function App() {
   const [currentPasswordInput, setCurrentPasswordInput] = useState<string>("");
   const [newPasswordInput, setNewPasswordInput] = useState<string>("");
   const [confirmPasswordInput, setConfirmPasswordInput] = useState<string>("");
-  const [profileMessage, setProfileMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState<boolean>(false);
+  const [isApproving, setIsApproving] = useState<boolean>(false);
 
   const socketsRef = useRef<{ [taskId: string]: WebSocket }>({});
 
@@ -164,9 +198,12 @@ export default function App() {
     try {
       const data = await fetchTasks();
       setTasks(data);
-      if (data.length > 0 && !selectedTask) {
-        setSelectedTask(data[0]);
-      }
+      setSelectedTask((current) => {
+        if (isNewChatRef.current) return null;
+        if (!current) return data[0] || null;
+        const match = data.find((t) => t.id === current.id);
+        return match || current;
+      });
       data.forEach((t) => {
         if (
           t.status === "pending" ||
@@ -183,12 +220,29 @@ export default function App() {
     }
   };
 
+  // Smart polling fallback: refresh every 1.5s whenever any task is actively running
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const hasActiveTask = tasks.some(
+      (t) => t.status === "pending" || t.status === "processing"
+    );
+    if (!hasActiveTask) return;
+
+    const interval = setInterval(() => {
+      loadTasks();
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, tasks]);
+
   const handleLogout = () => {
     logout();
     setIsAuthenticated(false);
     setCurrentUser(null);
     setTasks([]);
     setSelectedTask(null);
+    isNewChatRef.current = false;
+    setIsNewChat(false);
     setIsProfileOpen(false);
     setAuthError(null);
   };
@@ -209,6 +263,15 @@ export default function App() {
           setSelectedTask((prev) =>
             prev && prev.id === taskId ? { ...prev, ...updated } : prev
           );
+          // Instant state & logs refresh upon milestone or completion
+          if (
+            updated.status === "completed" ||
+            updated.status === "awaiting_approval" ||
+            updated.status === "failed"
+          ) {
+            loadTasks();
+            loadCurrentUser();
+          }
         }
       } catch (e) {
         console.error("Error parsing WebSocket event", e);
@@ -254,17 +317,39 @@ export default function App() {
   const handleSubmitTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim() || isSubmitting) return;
+    const submittedPrompt = prompt.trim();
     setIsSubmitting(true);
     try {
-      const newTask = await createTask(prompt);
-      setTasks((prev) => [newTask, ...prev]);
-      setSelectedTask(newTask);
+      // If user is currently viewing a task and has NOT clicked Start New Chat, continue this thread!
+      const isContinuing = !isNewChatRef.current && selectedTask !== null;
+      const targetTaskId = isContinuing ? selectedTask.id : undefined;
+
+      if (isContinuing) {
+        showToast("Follow-up sent to agent", "info");
+      } else {
+        showToast("Task dispatched to agent", "info");
+      }
+
+      const taskResult = await createTask(submittedPrompt, targetTaskId);
+
+      if (targetTaskId) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === targetTaskId ? taskResult : t))
+        );
+        setSelectedTask(taskResult);
+      } else {
+        setTasks((prev) => [taskResult, ...prev]);
+        setSelectedTask(taskResult);
+        isNewChatRef.current = false;
+        setIsNewChat(false);
+      }
+
       setPrompt("");
-      subscribeToTask(newTask.id);
+      subscribeToTask(taskResult.id);
       loadCurrentUser();
     } catch (err: any) {
       if (err.response?.status !== 401) {
-        alert("Failed to dispatch task. Please verify server connection.");
+        showToast("Failed to dispatch task. Please verify connection.", "error");
       }
     } finally {
       setIsSubmitting(false);
@@ -272,14 +357,46 @@ export default function App() {
   };
 
   const handleApproval = async (taskId: string, approved: boolean) => {
+    if (isApproving) return;
+    setIsApproving(true);
     try {
       await approveTask(taskId, approved);
-      loadTasks();
+      showToast(
+        approved ? "Action confirmed and executing" : "Action rejected",
+        approved ? "success" : "info"
+      );
+      // Immediately reflect optimistic state
+      setSelectedTask((prev) =>
+        prev && prev.id === taskId
+          ? {
+              ...prev,
+              status: approved ? "processing" : "completed",
+              approval_prompt: null,
+            }
+          : prev
+      );
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: approved ? "processing" : "completed",
+                approval_prompt: null,
+              }
+            : t
+        )
+      );
+      await loadTasks();
       loadCurrentUser();
     } catch (err: any) {
       if (err.response?.status !== 401) {
-        alert("Approval action failed.");
+        const detail =
+          err.response?.data?.detail ||
+          "Approval action could not be completed. The task may have already progressed.";
+        showToast(detail, "error");
       }
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -287,12 +404,12 @@ export default function App() {
     if (!selectedTask?.output) return;
     navigator.clipboard.writeText(selectedTask.output);
     setCopied(true);
+    showToast("Response copied to clipboard!", "success");
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleOpenProfile = () => {
     setProfileNameInput(currentUser?.full_name || "");
-    setProfileMessage(null);
     setCurrentPasswordInput("");
     setNewPasswordInput("");
     setConfirmPasswordInput("");
@@ -304,16 +421,13 @@ export default function App() {
     e.preventDefault();
     if (!profileNameInput.trim()) return;
     setIsUpdatingProfile(true);
-    setProfileMessage(null);
     try {
       const updated = await updateProfile({ full_name: profileNameInput.trim() });
       setCurrentUser(updated);
-      setProfileMessage({ type: "success", text: "Profile name updated successfully!" });
+      showToast("Profile name updated successfully!", "success");
     } catch (err: any) {
-      setProfileMessage({
-        type: "error",
-        text: err.response?.data?.detail || "Failed to update profile name.",
-      });
+      const errorMsg = err.response?.data?.detail || "Failed to update profile name.";
+      showToast(errorMsg, "error");
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -322,15 +436,14 @@ export default function App() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPasswordInput !== confirmPasswordInput) {
-      setProfileMessage({ type: "error", text: "New passwords do not match." });
+      showToast("New passwords do not match", "error");
       return;
     }
     if (newPasswordInput.length < 8) {
-      setProfileMessage({ type: "error", text: "Password must be at least 8 characters long." });
+      showToast("Password must be at least 8 characters", "error");
       return;
     }
     setIsUpdatingProfile(true);
-    setProfileMessage(null);
     try {
       await updateProfile({
         current_password: currentPasswordInput,
@@ -339,12 +452,10 @@ export default function App() {
       setCurrentPasswordInput("");
       setNewPasswordInput("");
       setConfirmPasswordInput("");
-      setProfileMessage({ type: "success", text: "Password changed successfully!" });
+      showToast("Password changed successfully!", "success");
     } catch (err: any) {
-      setProfileMessage({
-        type: "error",
-        text: err.response?.data?.detail || "Failed to change password. Verify your current password.",
-      });
+      const errorMsg = err.response?.data?.detail || "Failed to change password.";
+      showToast(errorMsg, "error");
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -500,94 +611,213 @@ export default function App() {
       case "web_search":
         return <Search className="h-4 w-4 text-sky-400" />;
       case "rag_retrieval":
-        return <Database className="h-4 w-4 text-emerald-400" />;
+        return <Database className="h-4 w-4 text-purple-400" />;
       case "calculation":
-        return <Calculator className="h-4 w-4 text-purple-400" />;
+        return <Calculator className="h-4 w-4 text-pink-400" />;
       case "sensitive_action":
         return <ShieldAlert className="h-4 w-4 text-amber-400" />;
+      case "direct_answer":
+        return <Sparkles className="h-4 w-4 text-emerald-400" />;
       default:
-        return <Bot className="h-4 w-4 text-zinc-400" />;
+        return <Bot className="h-4 w-4 text-teal-400" />;
     }
   };
 
-  const renderStatusBadge = (status: TaskStatus) => {
-    switch (status) {
-      case "completed":
-        return (
-          <span className="inline-flex items-center space-x-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>Completed</span>
-          </span>
-        );
-      case "processing":
-        return (
-          <span className="inline-flex items-center space-x-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 text-xs font-medium text-sky-400">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Executing</span>
-          </span>
-        );
-      case "awaiting_approval":
-        return (
-          <span className="inline-flex items-center space-x-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 text-xs font-medium text-amber-400 animate-pulse">
-            <ShieldAlert className="h-3.5 w-3.5" />
-            <span>Needs Approval</span>
-          </span>
-        );
-      case "failed":
-        return (
-          <span className="inline-flex items-center space-x-1.5 rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-xs font-medium text-rose-400">
-            <AlertCircle className="h-3.5 w-3.5" />
-            <span>Failed</span>
-          </span>
-        );
+  const getCategoryTheme = (category?: string, overrideColor?: string) => {
+    const effectiveTheme = overrideColor && overrideColor !== "auto" ? overrideColor : category;
+
+    switch (effectiveTheme) {
+      case "cyan":
+        return {
+          border: "border-cyan-500/50",
+          glow: "shadow-cyan-500/20",
+          badgeBg: "bg-cyan-500/20 border-cyan-500/40 text-cyan-200",
+          gradient: "from-cyan-300 via-sky-200 to-indigo-300",
+          accentBar: "from-cyan-400 via-sky-500 to-indigo-500",
+          label: "Electric Cyan Synthesis",
+          iconColor: "text-cyan-400",
+          activeSidebar: "border-cyan-500/60 bg-cyan-950/25 border-l-4 border-l-cyan-400 shadow-md shadow-cyan-500/5",
+          heroBg: "from-cyan-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "violet":
+        return {
+          border: "border-violet-500/50",
+          glow: "shadow-violet-500/20",
+          badgeBg: "bg-violet-500/20 border-violet-500/40 text-violet-200",
+          gradient: "from-violet-300 via-fuchsia-200 to-indigo-200",
+          accentBar: "from-violet-500 via-fuchsia-500 to-cyan-400",
+          label: "Neon Violet Synthesis",
+          iconColor: "text-violet-400",
+          activeSidebar: "border-violet-500/60 bg-violet-950/25 border-l-4 border-l-violet-400 shadow-md shadow-violet-500/5",
+          heroBg: "from-violet-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "amber":
+        return {
+          border: "border-amber-500/50",
+          glow: "shadow-amber-500/20",
+          badgeBg: "bg-amber-500/20 border-amber-500/40 text-amber-200",
+          gradient: "from-amber-300 via-orange-200 to-yellow-200",
+          accentBar: "from-amber-400 via-orange-500 to-yellow-500",
+          label: "Sunset Amber Synthesis",
+          iconColor: "text-amber-400",
+          activeSidebar: "border-amber-500/60 bg-amber-950/25 border-l-4 border-l-amber-400 shadow-md shadow-amber-500/5",
+          heroBg: "from-amber-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "rose":
+        return {
+          border: "border-pink-500/50",
+          glow: "shadow-pink-500/20",
+          badgeBg: "bg-pink-500/20 border-pink-500/40 text-pink-200",
+          gradient: "from-pink-300 via-rose-200 to-fuchsia-300",
+          accentBar: "from-pink-500 via-rose-500 to-purple-500",
+          label: "Vibrant Rose Synthesis",
+          iconColor: "text-pink-400",
+          activeSidebar: "border-pink-500/60 bg-pink-950/25 border-l-4 border-l-pink-400 shadow-md shadow-pink-500/5",
+          heroBg: "from-pink-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "emerald":
+        return {
+          border: "border-emerald-500/50",
+          glow: "shadow-emerald-500/20",
+          badgeBg: "bg-emerald-500/20 border-emerald-500/40 text-emerald-200",
+          gradient: "from-emerald-300 via-teal-200 to-cyan-300",
+          accentBar: "from-emerald-400 via-teal-500 to-cyan-500",
+          label: "Cyber Emerald Synthesis",
+          iconColor: "text-emerald-400",
+          activeSidebar: "border-emerald-500/60 bg-emerald-950/25 border-l-4 border-l-emerald-400 shadow-md shadow-emerald-500/5",
+          heroBg: "from-emerald-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "web_search":
+        return {
+          border: "border-sky-500/50",
+          glow: "shadow-sky-500/15",
+          badgeBg: "bg-sky-500/20 border-sky-500/40 text-sky-200",
+          gradient: "from-sky-300 via-blue-200 to-indigo-300",
+          accentBar: "from-sky-500 via-blue-500 to-indigo-500",
+          label: "Live Web Intelligence",
+          iconColor: "text-sky-400",
+          activeSidebar: "border-sky-500/60 bg-sky-950/25 border-l-4 border-l-sky-400 shadow-md shadow-sky-500/5",
+          heroBg: "from-sky-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "rag_retrieval":
+        return {
+          border: "border-purple-500/50",
+          glow: "shadow-purple-500/15",
+          badgeBg: "bg-purple-500/20 border-purple-500/40 text-purple-200",
+          gradient: "from-purple-300 via-pink-200 to-indigo-200",
+          accentBar: "from-purple-500 via-indigo-500 to-blue-500",
+          label: "Knowledge Base (RAG)",
+          iconColor: "text-purple-400",
+          activeSidebar: "border-purple-500/60 bg-purple-950/25 border-l-4 border-l-purple-400 shadow-md shadow-purple-500/5",
+          heroBg: "from-purple-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "calculation":
+        return {
+          border: "border-pink-500/50",
+          glow: "shadow-pink-500/15",
+          badgeBg: "bg-pink-500/20 border-pink-500/40 text-pink-200",
+          gradient: "from-pink-300 via-rose-200 to-amber-200",
+          accentBar: "from-pink-500 via-rose-500 to-orange-500",
+          label: "Deterministic Math Engine",
+          iconColor: "text-pink-400",
+          activeSidebar: "border-pink-500/60 bg-pink-950/25 border-l-4 border-l-pink-400 shadow-md shadow-pink-500/5",
+          heroBg: "from-pink-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "sensitive_action":
+        return {
+          border: "border-amber-500/50",
+          glow: "shadow-amber-500/15",
+          badgeBg: "bg-amber-500/20 border-amber-500/40 text-amber-200",
+          gradient: "from-amber-300 via-orange-200 to-yellow-200",
+          accentBar: "from-amber-500 via-orange-500 to-yellow-500",
+          label: "Human-in-the-Loop Action",
+          iconColor: "text-amber-400",
+          activeSidebar: "border-amber-500/60 bg-amber-950/25 border-l-4 border-l-amber-400 shadow-md shadow-amber-500/5",
+          heroBg: "from-amber-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
+      case "direct_answer":
+        return {
+          border: "border-cyan-500/50",
+          glow: "shadow-cyan-500/20",
+          badgeBg: "bg-cyan-500/20 border-cyan-500/40 text-cyan-200",
+          gradient: "from-cyan-300 via-sky-200 to-indigo-300",
+          accentBar: "from-cyan-400 via-sky-500 to-indigo-500",
+          label: "Direct AI Synthesis",
+          iconColor: "text-cyan-400",
+          activeSidebar: "border-cyan-500/60 bg-cyan-950/25 border-l-4 border-l-cyan-400 shadow-md shadow-cyan-500/5",
+          heroBg: "from-cyan-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
       default:
-        return (
-          <span className="inline-flex items-center space-x-1.5 rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
-            <Clock className="h-3.5 w-3.5" />
-            <span>Queued</span>
-          </span>
-        );
+        return {
+          border: "border-violet-500/50",
+          glow: "shadow-violet-500/20",
+          badgeBg: "bg-violet-500/20 border-violet-500/40 text-violet-200",
+          gradient: "from-violet-300 via-purple-200 to-cyan-300",
+          accentBar: "from-violet-500 via-purple-500 to-cyan-400",
+          label: "Autonomous Synthesis",
+          iconColor: "text-violet-400",
+          activeSidebar: "border-violet-500/60 bg-violet-950/25 border-l-4 border-l-violet-400 shadow-md shadow-violet-500/5",
+          heroBg: "from-violet-950/30 via-zinc-900/80 to-zinc-950/95",
+        };
     }
+  };
+
+  const getNodeBadgeStyle = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes("user")) return "bg-sky-500/15 text-sky-300 border-sky-500/30";
+    if (n.includes("triage")) return "bg-indigo-500/15 text-indigo-300 border-indigo-500/30";
+    if (n.includes("research") || n.includes("search")) return "bg-cyan-500/15 text-cyan-300 border-cyan-500/30";
+    if (n.includes("direct") || n.includes("answer") || n.includes("response")) return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+    if (n.includes("calc") || n.includes("math")) return "bg-pink-500/15 text-pink-300 border-pink-500/30";
+    if (n.includes("guard") || n.includes("hitl") || n.includes("sensit") || n.includes("approval")) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+    return "bg-teal-500/15 text-teal-300 border-teal-500/30";
   };
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 selection:bg-emerald-500 selection:text-zinc-950 font-sans antialiased overflow-hidden">
       {/* Top Navigation */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800/70 bg-zinc-900/50 px-6 backdrop-blur-md">
-        <div className="flex items-center space-x-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 text-zinc-950 shadow-md shadow-emerald-500/20">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800/70 bg-zinc-900/50 px-3.5 sm:px-6 backdrop-blur-md z-30">
+        <div className="flex items-center space-x-2.5 sm:space-x-3">
+          {/* Mobile Hamburger Button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="flex md:hidden items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900/90 p-2 text-zinc-300 hover:text-white hover:bg-zinc-800 transition active:scale-95"
+            title="Toggle Tasks & Chats"
+            aria-label="Toggle menu"
+          >
+            {isMobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
+
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 text-zinc-950 shadow-md shadow-emerald-500/20 shrink-0">
             <Bot className="h-5 w-5 stroke-[2.2]" />
           </div>
-          <div>
+          <div className="flex items-center space-x-2">
             <span className="font-bold text-sm tracking-tight text-zinc-100">
               AmbientDesk AI
             </span>
-            <span className="ml-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-              v2.0 Orchestrator
-            </span>
           </div>
         </div>
 
-        {/* Engine Operational Pill */}
-        <div className="hidden md:flex items-center space-x-2 rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1 text-xs text-zinc-400">
-          <Activity className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-          <span>Multi-Agent Engine Online</span>
+        {/* Engine Status Minimal Indicator */}
+        <div className="hidden lg:flex items-center space-x-2 text-xs text-zinc-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-zinc-400 text-xs">Engine Online</span>
         </div>
 
         {/* User Profile & Actions */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           {currentUser && (
             <button
               onClick={handleOpenProfile}
               title="Click to view Profile & Settings"
-              className="flex items-center space-x-2.5 rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-2.5 py-1 text-left transition hover:border-zinc-700 hover:bg-zinc-800/80"
+              className="flex items-center space-x-2 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-1 sm:px-2.5 sm:py-1 text-left transition hover:border-zinc-700 hover:bg-zinc-800/80"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 text-xs font-bold text-emerald-300 border border-emerald-500/30">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 text-xs font-bold text-emerald-300 border border-emerald-500/30 shrink-0">
                 {currentUser.full_name
                   ? currentUser.full_name[0].toUpperCase()
                   : currentUser.email[0].toUpperCase()}
               </div>
-              <div className="hidden sm:block">
+              <div className="hidden md:block">
                 <p className="text-xs font-semibold text-zinc-200 leading-tight">
                   {currentUser.full_name || currentUser.email.split("@")[0]}
                 </p>
@@ -607,16 +837,22 @@ export default function App() {
           )}
 
           <button
-            onClick={loadTasks}
+            onClick={async () => {
+              await loadTasks();
+              showToast("Workspace synchronized", "info");
+            }}
             title="Refresh Tasks"
-            className="flex items-center space-x-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition"
+            className="hidden sm:flex items-center space-x-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Sync</span>
+            <span>Sync</span>
           </button>
 
           <button
-            onClick={handleLogout}
+            onClick={() => {
+              showToast("Signed out successfully", "info");
+              handleLogout();
+            }}
             title="Sign Out"
             className="flex items-center space-x-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition"
           >
@@ -627,11 +863,46 @@ export default function App() {
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar: Task Navigator */}
-        <aside className="flex w-84 md:w-96 flex-col border-r border-zinc-800/70 bg-zinc-900/30 backdrop-blur-sm">
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Mobile Backdrop Overlay */}
+        {isMobileMenuOpen && (
+          <div
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-zinc-950/80 backdrop-blur-sm md:hidden animate-in fade-in duration-200"
+          />
+        )}
+
+        {/* Left Sidebar: Task Navigator (Responsive Drawer) */}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-zinc-800 bg-zinc-900/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-in-out md:static md:flex md:w-64 lg:w-72 md:bg-zinc-900/30 md:shadow-none md:translate-x-0 ${
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
+        >
+          {/* Mobile Drawer Header */}
+          <div className="flex md:hidden items-center justify-between border-b border-zinc-800/80 px-4 py-3 bg-zinc-950/40">
+            <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
+              <Bot className="h-4 w-4" />
+              <span>Workspace Navigator</span>
+            </div>
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
           {/* Search and Filters Header */}
           <div className="border-b border-zinc-800/60 p-3.5 space-y-2.5">
+            {/* Start New Chat Button */}
+            <button
+              onClick={startNewChat}
+              className="flex w-full items-center justify-center space-x-2 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 py-2.5 px-3 text-xs font-bold text-zinc-950 hover:opacity-95 hover:shadow-lg hover:shadow-emerald-500/20 transition shadow-md shadow-emerald-500/10 active:scale-[0.99]"
+            >
+              <Plus className="h-4 w-4 stroke-[2.5]" />
+              <span>Start New Chat Session</span>
+            </button>
+
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-500" />
               <input
@@ -674,252 +945,352 @@ export default function App() {
                 <span>No tasks match your filter.</span>
               </div>
             ) : (
-              filteredTasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => setSelectedTask(task)}
-                  className={`group relative cursor-pointer rounded-xl border p-3.5 transition-all ${
-                    selectedTask?.id === task.id
-                      ? "border-emerald-500/50 bg-zinc-900/90 shadow-md shadow-emerald-500/5"
-                      : "border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center space-x-2">
-                      <div className="rounded-md bg-zinc-900 p-1 border border-zinc-800">
-                        {renderCategoryIcon(task.triage_category)}
-                      </div>
-                      <span className="text-xs font-semibold capitalize text-zinc-200">
-                        {task.triage_category?.replace("_", " ") || "General Agent"}
-                      </span>
+              filteredTasks.map((task) => {
+                const isSelected = selectedTask?.id === task.id;
+                const promptTitle = task.prompt.split("\n\n[Follow-up]: ")[0];
+                return (
+                  <div
+                    key={task.id}
+                    onClick={() => selectTask(task)}
+                    className={`group relative cursor-pointer rounded-xl border p-3 transition-all ${
+                      isSelected
+                        ? "border-emerald-500/60 bg-emerald-950/20 shadow-md shadow-emerald-500/5"
+                        : "border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900/40"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`line-clamp-1 text-xs font-semibold ${isSelected ? "text-white" : "text-zinc-200"}`}>
+                        {promptTitle || "Untitled chat"}
+                      </p>
+                      {task.status === "processing" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400 shrink-0 mt-0.5" />
+                      ) : task.status === "awaiting_approval" ? (
+                        <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0 mt-1" />
+                      ) : (
+                        <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
+                          {new Date(task.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
-                    {renderStatusBadge(task.status)}
+                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-zinc-400">
+                      <div className="flex items-center space-x-1.5">
+                        {renderCategoryIcon(task.triage_category)}
+                        <span className="text-[10px] capitalize text-zinc-400">
+                          {task.triage_category?.replace("_", " ") || "Chat"}
+                        </span>
+                      </div>
+                      {task.prompt.includes("\n\n[Follow-up]: ") && (
+                        <span className="text-[10px] text-teal-400 font-medium">
+                          {task.prompt.split("\n\n[Follow-up]: ").length} msgs
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-xs text-zinc-300 leading-relaxed">
-                    {task.prompt}
-                  </p>
-                  <div className="mt-2.5 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
-                    <span>{new Date(task.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    {task.execution_time_ms > 0 && (
-                      <span>{(task.execution_time_ms / 1000).toFixed(1)}s</span>
-                    )}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
+          </div>
+
+          {/* Mobile Drawer Footer with Profile & Actions */}
+          <div className="flex md:hidden items-center justify-between border-t border-zinc-800/80 p-3 bg-zinc-950/70">
+            {currentUser && (
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleOpenProfile();
+                }}
+                className="flex items-center space-x-2 text-xs font-medium text-zinc-300 hover:text-white"
+              >
+                <Settings className="h-4 w-4 text-emerald-400" />
+                <span>Profile & Settings</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                handleLogout();
+              }}
+              className="flex items-center space-x-1.5 text-xs text-rose-400 hover:text-rose-300"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Sign Out</span>
+            </button>
           </div>
         </aside>
 
         {/* Right Canvas: Task Inspector & Workspace */}
         <main className="flex flex-1 flex-col overflow-hidden bg-zinc-950">
-          <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 md:p-8">
             {selectedTask ? (
               <div className="mx-auto max-w-4xl space-y-6">
-                {/* Task Title & Meta Bar */}
-                <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5 shadow-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1.5 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-medium uppercase tracking-wider text-emerald-400">
-                          User Prompt
-                        </span>
-                        <span className="text-zinc-600">•</span>
-                        <span className="text-xs text-zinc-500 font-mono">
-                          ID: {selectedTask.id}
-                        </span>
-                      </div>
-                      <h2 className="text-base md:text-lg font-semibold text-zinc-100 leading-snug">
-                        {selectedTask.prompt}
-                      </h2>
-                    </div>
-                    <div className="shrink-0">{renderStatusBadge(selectedTask.status)}</div>
-                  </div>
+                {(() => {
+                  const theme = getCategoryTheme(selectedTask.triage_category, outputColorTheme);
 
-                  <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-zinc-800/60 pt-3 text-xs text-zinc-400">
-                    <div className="flex items-center space-x-1.5">
-                      <Clock className="h-3.5 w-3.5 text-zinc-500" />
-                      <span>
-                        Created: {new Date(selectedTask.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    {selectedTask.execution_time_ms > 0 && (
-                      <>
-                        <span className="text-zinc-700">•</span>
-                        <div className="flex items-center space-x-1.5">
-                          <Activity className="h-3.5 w-3.5 text-zinc-500" />
-                          <span>
-                            Latency:{" "}
-                            {(selectedTask.execution_time_ms / 1000).toFixed(2)}s
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+                  // Parse all prompt turns cleanly so activePrompt is never empty
+                  const rawTurns = selectedTask.prompt
+                    .split(/(?:\r?\n\s*)*\[Follow-up\]:\s*/)
+                    .map((t) => t.trim())
+                    .filter(Boolean);
+                  const promptTurns = rawTurns.length > 0 ? rawTurns : [selectedTask.prompt.trim()];
+                  const activePrompt = promptTurns[promptTurns.length - 1] || selectedTask.prompt;
+                  const earlierTurns = promptTurns.slice(0, promptTurns.length - 1);
 
-                {/* HITL Card (Awaiting Approval) */}
-                {selectedTask.status === "awaiting_approval" && (
-                  <div className="relative overflow-hidden rounded-2xl border border-amber-500/50 bg-gradient-to-b from-amber-500/15 to-amber-500/5 p-6 shadow-xl shadow-amber-500/5">
-                    <div className="flex items-center space-x-3 text-amber-400">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 border border-amber-500/30">
-                        <ShieldAlert className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold tracking-tight">
-                          Human Authorization Required
-                        </h3>
-                        <p className="text-xs text-amber-300/80">
-                          A sensitive action has been paused waiting for your confirmation.
-                        </p>
-                      </div>
-                    </div>
+                  // Filter out system user_message logs so only actual agent steps remain
+                  const agentLogs = (selectedTask.logs || []).filter(
+                    (l) => l.node_name !== "user_message"
+                  );
 
-                    <div className="mt-4 rounded-xl border border-amber-500/20 bg-zinc-950/60 p-4 text-xs font-mono text-amber-200 leading-relaxed">
-                      {selectedTask.approval_prompt ||
-                        "Action payload pending review: Proceed with executing external side-effect."}
-                    </div>
-
-                    <div className="mt-5 flex items-center space-x-3">
-                      <button
-                        onClick={() => handleApproval(selectedTask.id, true)}
-                        className="flex items-center space-x-2 rounded-xl bg-emerald-500 px-5 py-2 text-xs font-bold text-zinc-950 hover:bg-emerald-400 active:scale-[0.98] transition shadow-md shadow-emerald-500/20"
-                      >
-                        <Check className="h-4 w-4 stroke-[2.5]" />
-                        <span>Confirm & Execute Action</span>
-                      </button>
-                      <button
-                        onClick={() => handleApproval(selectedTask.id, false)}
-                        className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-5 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 active:scale-[0.98] transition"
-                      >
-                        Reject Action
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Execution Pipeline & Agent Thought Timeline */}
-                <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/30 p-5 backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 text-zinc-200">
-                      <ListTree className="h-4 w-4 text-emerald-400" />
-                      <span className="text-xs font-bold uppercase tracking-wider">
-                        Agent Orchestration Steps
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setShowLogs(!showLogs)}
-                      className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
-                    >
-                      {showLogs ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-
-                  {showLogs && (
-                    <div className="mt-4 space-y-3">
-                      {selectedTask.status === "processing" && (
-                        <div className="flex items-center space-x-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3.5 text-xs text-sky-300">
-                          <Loader2 className="h-4 w-4 animate-spin text-sky-400 shrink-0" />
-                          <span>Graph execution active: Processing nodes and reasoning...</span>
-                        </div>
-                      )}
-
-                      {selectedTask.triage_category && (
-                        <div className="flex items-center space-x-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs">
-                          <div className="rounded-lg bg-zinc-900 p-1.5 border border-zinc-800">
-                            {renderCategoryIcon(selectedTask.triage_category)}
+                  return (
+                    <div className="space-y-6 pb-6">
+                      {/* Optional Earlier Conversation Turns */}
+                      {earlierTurns.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => setShowEarlierTurns(!showEarlierTurns)}
+                              className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition"
+                            >
+                              {showEarlierTurns
+                                ? "Hide earlier turns"
+                                : `${earlierTurns.length} earlier ${earlierTurns.length === 1 ? "message" : "messages"} in conversation`}
+                            </button>
                           </div>
-                          <div className="flex-1">
-                            <span className="font-semibold text-zinc-300">Triage Specialist:</span>{" "}
-                            <span className="text-zinc-400">Classified intent as</span>{" "}
-                            <span className="font-medium text-emerald-400 capitalize">
-                              {selectedTask.triage_category.replace("_", " ")}
+                          {showEarlierTurns && (
+                            <div className="space-y-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4 animate-in fade-in duration-200">
+                              {earlierTurns.map((turn, i) => (
+                                <div key={i} className="flex justify-end">
+                                  <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-zinc-800/70 px-4 py-2 text-xs text-zinc-300 border border-zinc-700/40">
+                                    <p className="whitespace-pre-wrap">{turn}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 1. User Message (Clean Right-Aligned Speech Bubble) */}
+                      <div className="flex justify-end">
+                        <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-zinc-800/90 px-4.5 py-3 text-sm text-zinc-100 border border-zinc-700/50 shadow-sm leading-relaxed">
+                          <p className="whitespace-pre-wrap">{activePrompt}</p>
+                          <div className="mt-1.5 flex items-center justify-end space-x-1.5 text-[10px] text-zinc-400">
+                            <Clock className="h-3 w-3" />
+                            <span>
+                              {new Date(selectedTask.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
                             </span>
                           </div>
                         </div>
-                      )}
-
-                      {selectedTask.logs && selectedTask.logs.length > 0 ? (
-                        selectedTask.logs.map((log) => (
-                          <div
-                            key={log.id}
-                            className="rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3.5 text-xs space-y-1.5"
-                          >
-                            <div className="flex items-center justify-between text-zinc-400">
-                              <span className="font-mono font-bold text-emerald-400 uppercase tracking-wide">
-                                [{log.node_name}]
-                              </span>
-                              <span className="text-[10px] text-zinc-500 font-mono">
-                                {new Date(log.timestamp).toLocaleTimeString()}
-                              </span>
-                            </div>
-                            <p className="text-zinc-300 leading-relaxed">{log.message}</p>
-                            {log.metadata && Object.keys(log.metadata).length > 0 && (
-                              <pre className="mt-2 rounded-lg bg-zinc-900/90 p-2 text-[11px] text-zinc-400 font-mono overflow-x-auto border border-zinc-800/60">
-                                {JSON.stringify(log.metadata, null, 2)}
-                              </pre>
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        !selectedTask.triage_category &&
-                        selectedTask.status !== "processing" && (
-                          <p className="text-xs text-zinc-500">
-                            No discrete node events captured for this run.
-                          </p>
-                        )
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Synthesis Output Card */}
-                {selectedTask.output && (
-                  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Sparkles className="h-4 w-4 text-emerald-400" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                          Agent Synthesis Output
-                        </span>
                       </div>
-                      <button
-                        onClick={handleCopyOutput}
-                        className="flex items-center space-x-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 transition"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="h-3.5 w-3.5 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Copy Output</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
 
-                    <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-5 text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap font-sans">
-                      {selectedTask.output}
-                    </div>
-                  </div>
-                )}
+                      {/* 2. HITL Authorization Banner (When awaiting approval) */}
+                      {selectedTask.status === "awaiting_approval" && (
+                        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 space-y-3.5 shadow-lg shadow-amber-500/5">
+                          <div className="flex items-center space-x-2.5 text-amber-400">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 border border-amber-500/30">
+                              <ShieldAlert className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider">
+                                Human Authorization Required
+                              </h3>
+                              <p className="text-[11px] text-amber-300/80">
+                                Sensitive operation requires your confirmation.
+                              </p>
+                            </div>
+                          </div>
 
-                {/* Error Banner */}
-                {selectedTask.status === "failed" && selectedTask.error_message && (
-                  <div className="flex items-start space-x-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-5 text-xs text-rose-300">
-                    <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-rose-400" />
-                    <div>
-                      <h4 className="font-semibold text-rose-200">Execution Error</h4>
-                      <p className="mt-1 leading-relaxed">{selectedTask.error_message}</p>
+                          <div className="rounded-xl border border-amber-500/20 bg-zinc-950/70 p-3.5 text-xs font-mono text-amber-200 leading-relaxed">
+                            {selectedTask.approval_prompt ||
+                              "Action payload pending review: Proceed with executing external side-effect."}
+                          </div>
+
+                          <div className="flex items-center space-x-3 pt-1">
+                            <button
+                              onClick={() => handleApproval(selectedTask.id, true)}
+                              disabled={isApproving}
+                              className="flex items-center space-x-2 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-zinc-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition shadow-md shadow-emerald-500/20"
+                            >
+                              {isApproving ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-950" />
+                                  <span>Processing...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                  <span>Confirm & Execute</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleApproval(selectedTask.id, false)}
+                              disabled={isApproving}
+                              className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
+                            >
+                              Reject Action
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. Assistant Response / Loading State */}
+                      {selectedTask.status === "processing" ? (
+                        <div className="flex items-start space-x-3.5 pt-1 animate-in fade-in duration-200">
+                          <div className={`flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700/60 ${theme.iconColor} shrink-0 mt-0.5 shadow-sm`}>
+                            <Bot className="h-4 w-4 animate-pulse" />
+                          </div>
+                          <div className="flex-1 space-y-2.5 pt-0.5">
+                            <div className="inline-flex items-center space-x-2 text-xs text-zinc-400 font-mono">
+                              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                              <span>Synthesizing reasoning & orchestrating nodes...</span>
+                            </div>
+                            <div className="space-y-2 max-w-md">
+                              <div className="h-2.5 w-4/5 rounded-full bg-zinc-800/80 animate-pulse" />
+                              <div className="h-2.5 w-3/5 rounded-full bg-zinc-800/60 animate-pulse [animation-delay:0.15s]" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : selectedTask.output ? (
+                        <div className="flex items-start space-x-3.5 group">
+                          {/* Assistant Avatar */}
+                          <div className={`flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700/70 ${theme.iconColor} shrink-0 mt-0.5 shadow-sm`}>
+                            <Bot className="h-4 w-4" />
+                          </div>
+
+                          <div className="flex-1 space-y-3 min-w-0">
+                            {/* DeepSeek / Claude-style Inline Collapsible Reasoning Pill */}
+                            {(selectedTask.execution_time_ms > 0 || agentLogs.length > 0) && (
+                              <div>
+                                <button
+                                  onClick={() => setShowLogs(!showLogs)}
+                                  className="inline-flex items-center space-x-1.5 rounded-full bg-zinc-900/80 border border-zinc-800/80 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition font-mono"
+                                >
+                                  <Sparkles className={`h-3 w-3 ${theme.iconColor}`} />
+                                  <span>
+                                    {selectedTask.execution_time_ms > 0
+                                      ? `Thought for ${(selectedTask.execution_time_ms / 1000).toFixed(1)}s`
+                                      : "Orchestration trace"}
+                                    {agentLogs.length > 0 ? ` (${agentLogs.length} steps)` : ""}
+                                  </span>
+                                  {showLogs ? (
+                                    <ChevronUp className="h-3 w-3 text-zinc-400" />
+                                  ) : (
+                                    <ChevronDown className="h-3 w-3 text-zinc-400" />
+                                  )}
+                                </button>
+
+                                {/* Collapsible Trace Drawer */}
+                                {showLogs && (
+                                  <div className="mt-2.5 max-h-64 overflow-y-auto space-y-2 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3.5 text-xs animate-in fade-in duration-150">
+                                    {selectedTask.triage_category && (
+                                      <div className="flex items-center space-x-2 text-zinc-400 pb-2 border-b border-zinc-800/60 text-xs">
+                                        <div className="rounded p-1 bg-zinc-950 border border-zinc-800">
+                                          {renderCategoryIcon(selectedTask.triage_category)}
+                                        </div>
+                                        <div>
+                                          <span className="font-semibold text-zinc-300">Triage:</span>{" "}
+                                          <span className="capitalize text-emerald-400 font-medium">
+                                            {selectedTask.triage_category.replace("_", " ")}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {agentLogs.length > 0 ? (
+                                      agentLogs.map((log) => (
+                                        <div
+                                          key={log.id}
+                                          className="rounded-lg bg-zinc-950/60 p-2.5 border border-zinc-800/50 text-[11px] font-mono space-y-1"
+                                        >
+                                          <div className="flex items-center justify-between text-zinc-400">
+                                            <span
+                                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getNodeBadgeStyle(
+                                                log.node_name
+                                              )}`}
+                                            >
+                                              [{log.node_name}]
+                                            </span>
+                                            <span className="text-[10px] text-zinc-500">
+                                              {new Date(log.timestamp).toLocaleTimeString()}
+                                            </span>
+                                          </div>
+                                          <p className="text-zinc-300 font-sans text-xs pt-0.5 leading-relaxed">
+                                            {log.message}
+                                          </p>
+                                          {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                            <div className="mt-1 text-[10px] text-zinc-500 font-mono">
+                                              {log.metadata.latency_ms !== undefined && (
+                                                <span>
+                                                  Latency: {(Number(log.metadata.latency_ms) / 1000).toFixed(2)}s
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <p className="text-zinc-500 text-xs">No discrete steps recorded.</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Direct Clean Markdown Response */}
+                            <div className="text-zinc-100 text-sm sm:text-base leading-relaxed break-words">
+                              <MarkdownRenderer content={selectedTask.output} />
+                            </div>
+
+                            {/* Unobtrusive Action Row */}
+                            <div className="flex items-center space-x-2.5 pt-1 text-xs text-zinc-500">
+                              <button
+                                onClick={handleCopyOutput}
+                                className="inline-flex items-center space-x-1.5 rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition active:scale-95"
+                                title="Copy response"
+                              >
+                                {copied ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                    <span className="text-[11px] text-emerald-400 font-medium">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3.5 w-3.5" />
+                                    <span className="text-[11px]">Copy</span>
+                                  </>
+                                )}
+                              </button>
+                              <span className="text-zinc-700">·</span>
+                              <span className="text-[11px] font-mono text-zinc-500">Gemini 2.5 Flash</span>
+                              {selectedTask.execution_time_ms > 0 && (
+                                <>
+                                  <span className="text-zinc-700">·</span>
+                                  <span className="text-[11px] font-mono text-zinc-500">
+                                    {(selectedTask.execution_time_ms / 1000).toFixed(2)}s
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Error Banner */}
+                      {selectedTask.status === "failed" && selectedTask.error_message && (
+                        <div className="flex items-start space-x-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-300">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+                          <div>
+                            <h4 className="font-semibold text-rose-200">Execution Error</h4>
+                            <p className="mt-0.5 leading-relaxed">{selectedTask.error_message}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             ) : (
               /* Hero Empty State */
@@ -942,7 +1313,10 @@ export default function App() {
                     return (
                       <button
                         key={idx}
-                        onClick={() => setPrompt(item.text)}
+                        onClick={() => {
+                          setPrompt(item.text);
+                          startNewChat();
+                        }}
                         className="group rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-xs transition hover:border-emerald-500/40 hover:bg-zinc-900/80"
                       >
                         <div className="flex items-center space-x-2 text-emerald-400 mb-1.5">
@@ -970,7 +1344,11 @@ export default function App() {
                   type="text"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Ask AmbientDesk to research, query docs, calculate, or execute tasks..."
+                  placeholder={
+                    selectedTask && !isNewChat
+                      ? "Reply to continue this conversation... (or click 'Start New Chat')"
+                      : "Ask AmbientDesk to research, query docs, calculate, or execute tasks..."
+                  }
                   className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/90 px-5 py-3.5 pr-28 text-sm text-zinc-200 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition shadow-inner"
                 />
                 <button
@@ -986,9 +1364,8 @@ export default function App() {
                   <span>Dispatch</span>
                 </button>
               </form>
-              <div className="mt-2 flex items-center justify-between px-2 text-[11px] text-zinc-500">
-                <span>Autonomous LangGraph State Machine</span>
-                <span>Press Enter to dispatch agent</span>
+              <div className="mt-1.5 flex items-center justify-end px-2 text-[10px] text-zinc-500">
+                <span>Press Enter to send</span>
               </div>
             </div>
           </div>
@@ -997,8 +1374,8 @@ export default function App() {
 
       {/* User Profile & Account Settings Modal */}
       {isProfileOpen && currentUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-xl rounded-2xl border border-zinc-800/90 bg-zinc-900 p-6 md:p-8 shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-2xl border border-zinc-800/90 bg-zinc-900 p-4 sm:p-6 md:p-8 shadow-2xl space-y-5 sm:space-y-6 scrollbar-thin">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-zinc-800/80 pb-5">
               <div className="flex items-center space-x-4">
@@ -1043,10 +1420,7 @@ export default function App() {
             <div className="grid grid-cols-3 rounded-xl bg-zinc-950/80 p-1 text-xs font-semibold border border-zinc-800">
               <button
                 type="button"
-                onClick={() => {
-                  setProfileTab("overview");
-                  setProfileMessage(null);
-                }}
+                onClick={() => setProfileTab("overview")}
                 className={`flex items-center justify-center space-x-1.5 rounded-lg py-2 transition ${
                   profileTab === "overview"
                     ? "bg-emerald-500 text-zinc-950 shadow"
@@ -1058,10 +1432,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setProfileTab("edit");
-                  setProfileMessage(null);
-                }}
+                onClick={() => setProfileTab("edit")}
                 className={`flex items-center justify-center space-x-1.5 rounded-lg py-2 transition ${
                   profileTab === "edit"
                     ? "bg-emerald-500 text-zinc-950 shadow"
@@ -1073,10 +1444,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setProfileTab("security");
-                  setProfileMessage(null);
-                }}
+                onClick={() => setProfileTab("security")}
                 className={`flex items-center justify-center space-x-1.5 rounded-lg py-2 transition ${
                   profileTab === "security"
                     ? "bg-emerald-500 text-zinc-950 shadow"
@@ -1087,24 +1455,6 @@ export default function App() {
                 <span>Security</span>
               </button>
             </div>
-
-            {/* Notification message */}
-            {profileMessage && (
-              <div
-                className={`flex items-center space-x-2 rounded-xl p-3 text-xs border ${
-                  profileMessage.type === "success"
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                    : "border-rose-500/30 bg-rose-500/10 text-rose-400"
-                }`}
-              >
-                {profileMessage.type === "success" ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                )}
-                <span>{profileMessage.text}</span>
-              </div>
-            )}
 
             {/* Tab 1: Overview & Usage Statistics */}
             {profileTab === "overview" && (
@@ -1171,6 +1521,60 @@ export default function App() {
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       <span>pgvector RAG + PostgresSaver</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* AI Output Theme Customization */}
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-zinc-200">
+                      <Sparkles className="h-4 w-4 text-emerald-400" />
+                      <span>AI Output Accent Theme</span>
+                    </div>
+                    <span className="text-[11px] text-zinc-500 font-mono">Workspace Setting</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    Set your preferred accent color for Agent Synthesis Output labels and cards:
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                    {[
+                      { id: "auto", label: "Smart Dynamic", desc: "Intent-based colors", badge: "bg-gradient-to-r from-cyan-400 to-indigo-400", border: "border-cyan-500/40" },
+                      { id: "cyan", label: "Electric Cyan", desc: "High-tech ice blue", badge: "bg-cyan-400", border: "border-cyan-500/40" },
+                      { id: "violet", label: "Neon Violet", desc: "Cyber purple / violet", badge: "bg-violet-400", border: "border-violet-500/40" },
+                      { id: "amber", label: "Sunset Amber", desc: "Warm golden glow", badge: "bg-amber-400", border: "border-amber-500/40" },
+                      { id: "rose", label: "Vibrant Rose", desc: "Radiant pink / fuchsia", badge: "bg-pink-400", border: "border-pink-500/40" },
+                      { id: "emerald", label: "Cyber Emerald", desc: "Matrix green styling", badge: "bg-emerald-400", border: "border-emerald-500/40" },
+                    ].map((themeOpt) => {
+                      const isSelected = outputColorTheme === themeOpt.id;
+                      return (
+                        <button
+                          key={themeOpt.id}
+                          type="button"
+                          onClick={() => {
+                            setOutputColorTheme(themeOpt.id as any);
+                            localStorage.setItem("ambient_output_theme", themeOpt.id);
+                          }}
+                          className={`flex items-start space-x-2.5 rounded-xl border p-2.5 text-left transition ${
+                            isSelected
+                              ? `${themeOpt.border} bg-zinc-900 shadow-md ring-1 ring-emerald-500/50`
+                              : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700 hover:bg-zinc-900/60"
+                          }`}
+                        >
+                          <span className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full ${themeOpt.badge} ${isSelected ? "ring-2 ring-white" : ""}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className={`text-xs font-bold ${isSelected ? "text-white" : "text-zinc-300"}`}>
+                                {themeOpt.label}
+                              </span>
+                              {isSelected && <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                            </div>
+                            <span className="block text-[10px] text-zinc-500 truncate mt-0.5">
+                              {themeOpt.desc}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

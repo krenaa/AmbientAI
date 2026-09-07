@@ -15,11 +15,22 @@ SECRET_KEY = os.getenv(
     "django-insecure-default-change-me-in-production-1234567890",
 )
 
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
+is_prod = os.getenv("ENVIRONMENT", "").lower() in ("production", "prod") or os.getenv("DJANGO_ENV", "").lower() in ("production", "prod")
+default_debug = "False" if is_prod else "True"
+DEBUG = os.getenv("DJANGO_DEBUG", default_debug).lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.getenv(
-    "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1"
-).split(",")
+if not DEBUG and ("django-insecure" in SECRET_KEY or len(SECRET_KEY) < 32):
+    import warnings
+    warnings.warn(
+        "CRITICAL SECURITY WARNING: Production deployment is running with an insecure or default DJANGO_SECRET_KEY! "
+        "Generate a strong random 50+ character key in your production .env file.",
+        RuntimeWarning,
+    )
+
+raw_hosts = os.getenv(
+    "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,backend,ambientdesk-backend"
+)
+ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(",") if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -178,6 +189,17 @@ AI_AGENT_INTERNAL_TOKEN = os.getenv(
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# Production HTTPS & Cookie Hardening
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "False").lower() in ("true", "1", "yes")
+    if SECURE_SSL_REDIRECT:
+        SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+        SECURE_HSTS_PRELOAD = True
 
 ASGI_APPLICATION = "core.asgi.application"
 

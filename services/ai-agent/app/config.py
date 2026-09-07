@@ -52,6 +52,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
     ]
 
+    # Email / SMTP Configuration (Optional: fallback to mock delivery if not provided)
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: str = "noreply@ambientdesk.ai"
+    SMTP_USE_TLS: bool = True
+
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),
         env_file_encoding="utf-8",

@@ -29,7 +29,7 @@ def broadcast_task_event(task_id: str, payload: dict):
     default_retry_delay=5,
     autoretry_for=(requests.RequestException,),
 )
-def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
+def run_ai_agent_task(self, task_id: str, human_approved: bool = False, prompt: str = None):
     try:
         task = AgentTask.objects.get(id=task_id)
     except AgentTask.DoesNotExist:
@@ -62,10 +62,11 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False):
         }
     else:
         url = f"{settings.AI_AGENT_SERVICE_URL}/tasks/run"
+        effective_prompt = prompt if prompt else task.prompt
         payload = {
             "task_id": str(task.id),
             "user_id": str(task.user.id),
-            "prompt": task.prompt,
+            "prompt": effective_prompt,
         }
 
     start_time = time.perf_counter()

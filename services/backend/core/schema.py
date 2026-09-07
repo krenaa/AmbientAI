@@ -7,14 +7,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from accounts.models import CustomUser
+from django.conf import settings
 from tasks.models import AgentTask, TaskExecutionLog, TaskStatus
 from tasks.tasks import run_ai_agent_task, broadcast_task_event
 
 
 def get_authenticated_user(info: Info) -> Optional[CustomUser]:
-    """Resolves authenticated user from JWT Bearer token or session request."""
+    """Resolves authenticated user from JWT Bearer token, session request, or debug dev fallback."""
     request = getattr(info.context, "request", None)
     if not request:
+        if settings.DEBUG:
+            return CustomUser.objects.order_by("id").first()
         return None
 
     auth_header = request.headers.get("Authorization", "")
@@ -29,6 +32,10 @@ def get_authenticated_user(info: Info) -> Optional[CustomUser]:
 
     if getattr(request, "user", None) and request.user.is_authenticated:
         return request.user
+
+    # In development mode, auto-resolve to primary user for seamless GraphiQL playground testing
+    if settings.DEBUG:
+        return CustomUser.objects.order_by("id").first()
 
     return None
 

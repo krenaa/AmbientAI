@@ -44,7 +44,7 @@ export interface AgentTask {
   triage_category?: TriageCategory;
   output?: string;
   error_message?: string;
-  approval_prompt?: string;
+  approval_prompt?: string | null;
   execution_time_ms: number;
   created_at: string;
   updated_at: string;

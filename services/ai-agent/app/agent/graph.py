@@ -15,20 +15,29 @@ logger = logging.getLogger("ambientdesk.graph")
 TRIAGE_SYSTEM_PROMPT = """You are the ambientdesk Task Triage Specialist.
 Analyze the user's input and classify the intent into one of:
 - direct_answer: General reasoning, conceptual explanations, or simple chit-chat.
-- research: Involves web searches, facts, or live lookups.
+- research: Involves web searches, facts, documentation lookups, or policy queries.
 - code_generation: Involves writing, debugging, or analyzing software code.
 - summarization: Condensing documents or text.
-- sensitive_action: Tasks like sending emails, making financial transactions, database writes, or destructive operations.
+- sensitive_action: Tasks that execute real state-changing operations like sending live emails, transferring funds, modifying databases, or deleting resources.
 
-If the task asks to send an email, perform an external transaction, or delete resources, set `is_sensitive=True`."""
+CRITICAL RULES:
+1. READ-ONLY QUERIES ARE NEVER SENSITIVE: Looking up, checking, reading, or researching bank policies, internal documents, compliance guidelines, terms of service, or checking/reading incoming inbox emails via fetch_recent_emails is purely read-only `research` or `direct_answer`. Always set `is_sensitive=False`.
+2. ONLY real state-changing actions (e.g., actually transferring funds, executing financial payouts, sending emails via send_email or send_external_notification, or deleting records) should be classified as `sensitive_action` with `is_sensitive=True`."""
 
 
 async def triage_node(state: AgentState) -> Dict[str, Any]:
     """Classifies user request and checks for sensitive actions."""
     structured_llm = get_resilient_llm(temperature=0.0, structured_schema=TriageOutput)
 
-    user_messages = [m for m in state["messages"] if isinstance(m, HumanMessage)]
-    latest_query = user_messages[-1].content if user_messages else "No input"
+    user_messages = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
+    raw_content = user_messages[-1].content if user_messages else "No input"
+    if isinstance(raw_content, list):
+        latest_query = " ".join(
+            item.get("text", str(item)) if isinstance(item, dict) else str(item)
+            for item in raw_content
+        )
+    else:
+        latest_query = str(raw_content)
 
     messages = [
         SystemMessage(content=TRIAGE_SYSTEM_PROMPT),
@@ -81,9 +90,35 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
 
     llm_with_tools = get_resilient_llm(temperature=0.2, tools=ALL_TOOLS)
     system_instruction = (
-        "You are ambientdesk AI, a capable, precise multi-agent assistant.\n"
-        "Execute the user's task clearly and concisely. Use tools when factual lookup is needed."
+        "You are ambientdesk AI, an advanced, highly capable multi-agent assistant.\n"
+        "Execute the user's task clearly, concisely, and reliably. Use registered tools when factual lookups, external searches, calculations, or emails are needed.\n\n"
+        "CRITICAL MULTI-STEP WORKFLOW DIRECTIVE:\n"
+        "1. When the user requests gathering information AND sending an email/notification (for example: 'Search the web for X, summarize it, and email the report to Y'):\n"
+        "   - You MUST complete ALL parts of the requested workflow. Do NOT stop after just retrieving or summarizing.\n"
+        "   - Step 1: Call `web_search` or `knowledge_base_retrieval` to get the necessary facts.\n"
+        "   - Step 2: Once the facts return, you MUST invoke `send_email` with the recipient, a clear subject, and the synthesized summary body.\n"
+        "   - Only after invoking `send_email` should you deliver the final confirmation and summary to the user.\n\n"
+        "CONVERSATIONAL MEMORY & FOLLOW-UP DIRECTIVE:\n"
+        "1. You maintain full conversational continuity. All previous messages, research results, summaries, and email addresses in this thread are in your context.\n"
+        "2. If the user follows up with 'send this to mail', 'I told you to send it to mail', or asks to email previous results:\n"
+        "   - Check the conversation history for the recipient email address, subject, and synthesized content.\n"
+        "   - If the recipient is present in earlier messages (e.g. from the initial prompt), immediately invoke `send_email` using the previous content and that recipient!\n"
+        "   - If no recipient address was provided anywhere in the conversation history, ask the user to provide the recipient email address.\n\n"
+        "DEFENSIVE EMAIL & COMMUNICATION GUIDELINES:\n"
+        "1. When sending an email, verify that the recipient address has a valid standard format (e.g., 'user@example.com'). "
+        "If the address contains obvious invalid characters (such as '#', spaces, or malformed domain like 'fenil@#gmail.com'), do NOT proceed blindly; politely inform the user of the invalid syntax and ask for clarification or confirm the corrected address.\n"
+        "2. If the `send_email` tool returns a 'Validation Error', do not repeat the call with the same broken address. Instead, communicate the exact error to the user and suggest the likely corrected address (e.g., ask if they meant 'fenil@gmail.com').\n"
+        "3. To send an email, invoke the `send_email` tool with recipient, subject, and body.\n"
+        "4. To check incoming emails or inspect the inbox for inquiries, alerts, or messages, invoke `fetch_recent_emails`."
     )
+
+    if state.get("approval_status") == "approved":
+        system_instruction += (
+            "\n\nCRITICAL DIRECTIVE: The human supervisor has reviewed and explicitly approved this action. "
+            "You MUST proceed to execute the requested action now using your registered tools. "
+            "If the request asks to email results, you MUST invoke the `send_email` tool with the target recipient, subject, and body. "
+            "Do not stop after just summarizing; execute `send_email` immediately. The operation has been fully authorized by the user."
+        )
 
     messages = [SystemMessage(content=system_instruction)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)

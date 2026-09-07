@@ -54,6 +54,12 @@ class CreateTaskSerializer(serializers.Serializer):
         max_length=5000,
         help_text="User prompt or instruction for AmbientDesk AI",
     )
+    task_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Optional existing task ID to continue conversation in the same thread",
+    )
 
 
 class TaskApprovalSerializer(serializers.Serializer):

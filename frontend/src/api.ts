@@ -105,8 +105,15 @@ export const fetchTasks = async (): Promise<AgentTask[]> => {
   return res.data;
 };
 
-export const createTask = async (prompt: string): Promise<AgentTask> => {
-  const res = await apiClient.post("/tasks/", { prompt });
+export const createTask = async (
+  prompt: string,
+  taskId?: string
+): Promise<AgentTask> => {
+  const payload: { prompt: string; task_id?: string } = { prompt };
+  if (taskId) {
+    payload.task_id = taskId;
+  }
+  const res = await apiClient.post("/tasks/", payload);
   return res.data;
 };
 

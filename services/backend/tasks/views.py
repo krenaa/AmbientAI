@@ -1,7 +1,7 @@
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import AgentTask, TaskStatus
+from .models import AgentTask, TaskStatus, TaskExecutionLog
 from .serializers import (
     AgentTaskSerializer,
     CreateTaskSerializer,
@@ -25,15 +25,57 @@ class AgentTaskViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = CreateTaskSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        task_id = serializer.validated_data.get("task_id")
+        user_prompt = serializer.validated_data["prompt"]
+
+        if task_id:
+            try:
+                task = AgentTask.objects.get(id=task_id, user=request.user)
+                # Append user prompt to ongoing task history
+                task.prompt = f"{task.prompt}\n\n[Follow-up]: {user_prompt}"
+                task.status = TaskStatus.PROCESSING
+                task.error_message = None
+                task.approval_prompt = None
+                task.save(update_fields=["prompt", "status", "error_message", "approval_prompt", "updated_at"])
+
+                TaskExecutionLog.objects.create(
+                    task=task,
+                    node_name="user_message",
+                    message=user_prompt,
+                )
+
+                broadcast_task_event(
+                    str(task.id),
+                    {
+                        "task_id": str(task.id),
+                        "prompt": task.prompt,
+                        "status": task.status,
+                        "message": "Processing follow-up in active conversation...",
+                    },
+                )
+
+                # Trigger async Celery job with this follow-up prompt
+                run_ai_agent_task.delay(str(task.id), prompt=user_prompt)
+
+                response_serializer = AgentTaskSerializer(task)
+                return Response(response_serializer.data, status=status.HTTP_200_OK)
+            except AgentTask.DoesNotExist:
+                pass
 
         task = AgentTask.objects.create(
             user=request.user,
-            prompt=serializer.validated_data["prompt"],
+            prompt=user_prompt,
             status=TaskStatus.PENDING,
         )
 
+        TaskExecutionLog.objects.create(
+            task=task,
+            node_name="user_message",
+            message=user_prompt,
+        )
+
         # Trigger async Celery job
-        run_ai_agent_task.delay(str(task.id))
+        run_ai_agent_task.delay(str(task.id), prompt=user_prompt)
 
         response_serializer = AgentTaskSerializer(task)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)

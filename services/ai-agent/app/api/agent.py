@@ -1,7 +1,7 @@
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Header, HTTPException, status, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
@@ -10,6 +10,30 @@ from app.agent.graph import agent_graph
 
 logger = logging.getLogger("ambientdesk.api.agent")
 router = APIRouter(prefix="/tasks", tags=["Agent Execution"])
+
+
+def extract_text_content(content: Any) -> str:
+    """Safely extracts plain string from LangChain message content, which can be a str or list of dicts/blocks."""
+    if not content:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for block in content:
+            if isinstance(block, str):
+                text_parts.append(block)
+            elif isinstance(block, dict):
+                if "text" in block:
+                    text_parts.append(str(block["text"]))
+                elif "content" in block:
+                    text_parts.append(str(block["content"]))
+                else:
+                    text_parts.append(str(block))
+            else:
+                text_parts.append(str(block))
+        return "\n".join(text_parts).strip()
+    return str(content)
 
 
 class RunTaskRequest(BaseModel):
@@ -29,6 +53,13 @@ class TaskResponse(BaseModel):
     triage_category: Optional[str] = None
     output: Optional[str] = None
     approval_prompt: Optional[Dict[str, Any]] = None
+
+    @field_validator("output", mode="before")
+    @classmethod
+    def normalize_output(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        return extract_text_content(v)
 
 
 async def verify_internal_token(
@@ -82,14 +113,20 @@ async def run_task(payload: RunTaskRequest) -> TaskResponse:
                 approval_prompt=interrupt_value if isinstance(interrupt_value, dict) else {"message": str(interrupt_value)},
             )
 
-        last_message = result["messages"][-1]
+        output_text = ""
+        for m in reversed(result.get("messages", [])):
+            text = extract_text_content(getattr(m, "content", m))
+            if text:
+                output_text = text
+                break
+
         triage_cat = result["triage"].category if result.get("triage") else None
 
         return TaskResponse(
             task_id=payload.task_id,
             status="completed",
             triage_category=triage_cat,
-            output=last_message.content,
+            output=output_text,
         )
     except Exception as e:
         logger.error(f"Execution error for task {payload.task_id}: {e}", exc_info=True)
@@ -116,14 +153,20 @@ async def resume_task(payload: ResumeTaskRequest) -> TaskResponse:
             config=config,
         )
 
-        last_message = result["messages"][-1]
+        output_text = ""
+        for m in reversed(result.get("messages", [])):
+            text = extract_text_content(getattr(m, "content", m))
+            if text:
+                output_text = text
+                break
+
         triage_cat = result["triage"].category if result.get("triage") else None
 
         return TaskResponse(
             task_id=payload.task_id,
             status="completed",
             triage_category=triage_cat,
-            output=last_message.content,
+            output=output_text,
         )
     except Exception as e:
         logger.error(f"Resume error for task {payload.task_id}: {e}", exc_info=True)
