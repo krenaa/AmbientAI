@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <span className="font-semibold text-xs tracking-tight text-white flex items-center gap-1.5">
-              AmbientDesk <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">Agent Studio</span>
+              AmbientDesk <span className="hidden sm:inline-block text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">Agent Studio</span>
             </span>
           </div>
         </div>
@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       <div className="flex items-center gap-2.5">
         {/* Output Accent Palette Selector */}
-        <div className="relative group">
+        <div className="hidden sm:block relative group">
           <button
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition-all cursor-pointer shadow-sm"
             title="Theme Accent"
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Live Sync Status */}
         <div
-          className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border select-none transition-colors ${
+          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border select-none transition-colors ${
             wsConnected
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
               : "bg-zinc-800 border-zinc-700 text-zinc-400"

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, Mail, User as UserIcon, Bot, Loader2, AlertCircle, Sparkles } from "lucide-react";
+import { Lock, Mail, User as UserIcon, Bot, Loader2, AlertCircle } from "lucide-react";
 
 interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -100,7 +100,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onRegister }) =
                   <input
                     type="text"
                     required
-                    placeholder="System Administrator"
+                    placeholder="Your Name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
@@ -116,7 +116,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onRegister }) =
                 <input
                   type="email"
                   required
-                  placeholder="admin@ambientdesk.ai"
+                  placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
@@ -154,14 +154,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onRegister }) =
               )}
             </button>
           </form>
-
-          {/* Quick Tip */}
-          <div className="pt-2 border-t border-zinc-800/80 text-center">
-            <p className="text-[11px] text-zinc-400 flex items-center justify-center gap-1">
-              <Sparkles className="w-3 h-3 text-cyan-400" />
-              <span>Default Admin: admin@ambientdesk.ai / AdminPass123!</span>
-            </p>
-          </div>
         </div>
       </div>
     </div>
