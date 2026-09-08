@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Lock, Mail, User as UserIcon, Bot, Loader2, AlertCircle } from "lucide-react";
+import { Lock, Mail, User as UserIcon, Loader2, AlertCircle } from "lucide-react";
+import { AmbientLogo } from "../common/AmbientLogo";
 
 interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -36,9 +37,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onRegister }) =
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-lg">
-            <Bot className="w-6 h-6 text-zinc-100" />
-          </div>
+          <AmbientLogo className="w-14 h-14 drop-shadow-[0_0_15px_rgba(6,182,212,0.35)]" />
           <div className="space-y-1">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
               AmbientDesk <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">Studio</span>

@@ -5,12 +5,12 @@ import {
   CheckCircle2,
   User as UserIcon,
   LogOut,
-  ChevronDown,
-  Bot
+  ChevronDown
 } from "lucide-react";
 import type { AgentTask, UserProfile } from "../../types";
 import { CategoryIcon } from "../common/CategoryIcon";
 import { getCategoryTheme } from "../../utils/theme";
+import { AmbientLogo } from "../common/AmbientLogo";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -52,9 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-            <Bot className="w-3.5 h-3.5 text-zinc-200" />
-          </div>
+          <AmbientLogo className="w-6 h-6 shrink-0 shadow-sm" />
           <div>
             <span className="font-semibold text-xs tracking-tight text-white flex items-center gap-1.5">
               AmbientDesk <span className="hidden sm:inline-block text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">Agent Studio</span>
