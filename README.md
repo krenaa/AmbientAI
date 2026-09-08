@@ -9,14 +9,12 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00.svg?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
-[![Django 5](https://img.shields.io/badge/Django-5.1%2B-092E20.svg?logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![PostgreSQL pgvector](https://img.shields.io/badge/PostgreSQL-pgvector-336791.svg?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![Redis](https://img.shields.io/badge/Redis-7--Alpine-DC382D.svg?logo=redis&logoColor=white)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Vite](https://img.shields.io/badge/Vite-6.0-646CFF.svg?logo=vite&logoColor=white)](https://vite.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Live Demo](#quick-start-with-docker-compose) • [Key Features](#-key-features) • [System Architecture](#-system-architecture) • [Showcase Prompts](#-showcase-prompts-to-test-the-system) • [Deployment Guide](DEPLOYMENT.md)
+[Quick Start](#-quick-start-native-execution) • [Key Features](#-key-features) • [System Architecture](#-system-architecture) • [Showcase Prompts](#-showcase-prompts-to-test-the-system) • [Deployment Guide](DEPLOYMENT.md)
 
 </div>
 
@@ -26,11 +24,11 @@
 
 **AmbientDesk AI** is an enterprise-grade agentic operating system designed to triage, orchestrate, and execute complex workflows autonomously while maintaining strict **Human-in-the-Loop (HITL)** governance and state persistence.
 
-Traditional AI assistants either operate with unbound autonomy (risking hallucinations and unauthorized actions) or as simple reactive chatbots. **AmbientDesk AI bridges the enterprise gap** by providing:
-1. **Intelligent Triage & Intent Routing**: Directs prompts to deterministic computation, web intelligence, internal vector search, or sensitive execution pipelines.
-2. **LangGraph State Machine with `interrupt()`**: Halts execution before state-changing side effects (SMTP email, alerts, database mutations) for explicit human authorization.
-3. **Resilient Dual-Model LLM Routing**: Primary ultra-fast inference via **Groq (Llama 3.3 70B)** with zero-downtime automated fallback to **Google Gemini 2.0 Flash**.
-4. **Real-Time Asynchronous Streaming**: Full-duplex WebSocket communication streaming node lifecycle events, tool logs, and token generation directly to a modern React interface.
+Powered by a lightweight, high-performance **Pure FastAPI + LangGraph** async backend and a modern **React 19 + Vite** interface:
+1. **Intelligent Triage & Intent Routing**: Directs prompts to deterministic computation, web intelligence, internal vector search (`pgvector`), or sensitive execution pipelines.
+2. **LangGraph State Machine with `interrupt()`**: Halts execution before state-changing side effects (SMTP email, alerts, mutations) for explicit human authorization.
+3. **Resilient Dual-Model LLM Routing**: Primary ultra-fast inference via **Groq (Llama 3.3 70B)** with automated fallback to **Google Gemini 2.0 Flash**.
+4. **Native Async WebSockets**: Direct full-duplex WebSocket streaming for real-time node transitions, tool execution logs, and LLM tokens.
 
 ---
 
@@ -50,12 +48,12 @@ Traditional AI assistants either operate with unbound autonomy (risking hallucin
 | Capability | Technical Implementation | Benefit |
 | :--- | :--- | :--- |
 | **Multi-Agent State Graph** | LangGraph `StateGraph` + `MemorySaver` checkpointer | Stateful multi-turn reasoning with conversational memory and interruptible execution |
-| **Human-In-The-Loop (HITL)** | Native LangGraph `interrupt()` + Django approval endpoint | Prevents unauthorized emails, webhook dispatches, and financial/data modifications |
+| **Human-In-The-Loop (HITL)** | Native LangGraph `interrupt()` + FastAPI approval endpoint | Prevents unauthorized emails, webhook dispatches, and data modifications |
 | **Resilient Model Routing** | Fallback chaining: Groq Llama 3.3 70B ➔ Gemini 2.0 Flash | 99.9% uptime against LLM rate limits and API outages |
-| **pgvector Semantic RAG** | PostgreSQL `pgvector` extension + LangChain VectorStore | Accurate document retrieval from internal enterprise policies and technical specs |
+| **pgvector Semantic RAG** | PostgreSQL `pgvector` extension + LangChain VectorStore | Single database for relational data and document embeddings |
 | **Live Web Intelligence** | Tavily Search API with automated content cleaning | Real-time factual queries with citations and source URL attribution |
 | **Defensive Tool Guardrails** | RFC-compliant Regex email validation + AST Math parser | Eliminates malformed inputs, unsafe `eval()`, and prompt injection edge-cases |
-| **Live Telemetry & Logs** | Django Channels (ASGI) + Redis pub/sub layer | Sub-second step-by-step UI updates showing which tool or node is actively running |
+| **Live Telemetry & Logs** | Native FastAPI WebSockets (`/ws/tasks/{id}/`) | Sub-second step-by-step UI updates showing which tool or node is actively running |
 
 ---
 
@@ -63,34 +61,26 @@ Traditional AI assistants either operate with unbound autonomy (risking hallucin
 
 ```mermaid
 flowchart TB
-    subgraph ClientLayer ["Client Layer (React 19 + Vite)"]
-        UI["React Dashboard"]
-        WSClient["WebSocket Streaming Client"]
+    subgraph ClientLayer ["Client Layer (React 19 + TypeScript + Vite)"]
+        UI["React Dashboard (:5173)"]
+        WSClient["Native WebSocket Client"]
         HITLModal["HITL Approval Modal"]
     end
 
-    subgraph Gateway ["Reverse Proxy & Ingress"]
-        Nginx["Nginx Gateway (Port 80)"]
-    end
-
-    subgraph BackendLayer ["Application Layer (Django 5 + Daphne ASGI)"]
-        Daphne["Daphne ASGI Server"]
-        DRF["Django REST API"]
-        Channels["Django Channels (Consumers)"]
-        CeleryWorker["Celery Asynchronous Worker"]
-    end
-
-    subgraph AgentService ["AI Engine (FastAPI + LangGraph)"]
-        FastAPI["FastAPI Orchestrator (:8001)"]
-        StateGraph["LangGraph State Machine"]
-        MemorySaver["State Checkpointer (MemorySaver)"]
+    subgraph BackendLayer ["Unified Async Backend (FastAPI + LangGraph)"]
+        FastAPIServer["FastAPI Server (:8000)"]
+        AuthRouter["JWT Auth & User Management"]
+        TaskRouter["Task Dispatch & HITL Approvals"]
+        WSManager["WebSocket Connection Manager"]
+        StateGraph["LangGraph State Machine Engine"]
+        MemorySaver["State Checkpointer"]
     end
 
     subgraph ToolSuite ["Defensive Tool Suite"]
         TavilyTool["Tavily Web Search"]
         RAGTool["pgvector Semantic RAG"]
-        MathTool["AST Math Evaluator"]
-        EmailTool["SMTP / Demo Email Dispatcher"]
+        MathTool["Sandboxed AST Math Evaluator"]
+        EmailTool["SMTP Email Dispatcher"]
         InboxTool["Enterprise Inbox Auditor"]
     end
 
@@ -99,25 +89,24 @@ flowchart TB
         Gemini["Google Gemini (gemini-2.0-flash)"]
     end
 
-    subgraph DataBroker ["Data & Message Broker"]
-        Postgres[("PostgreSQL 16 + pgvector")]
-        Redis[("Redis 7 (Broker & Channel Layer)")]
+    subgraph DataBroker ["Storage & Persistence"]
+        Postgres[("PostgreSQL 16 + pgvector (Local / Supabase / Neon)")]
     end
 
-    UI <-->|HTTP / JSON| Nginx
-    WSClient <-->|WebSocket Stream| Nginx
-    Nginx --> Daphne
-    Nginx --> UI
-
-    Daphne --> DRF
-    Daphne --> Channels
-    Channels <--> Redis
-    DRF --> Postgres
-    DRF --> CeleryWorker
-
-    CeleryWorker <-->|Internal Token Auth| FastAPI
-    FastAPI --> StateGraph
+    UI <-->|HTTP REST / JSON| FastAPIServer
+    WSClient <-->|WebSocket Stream /ws/tasks/:id/| WSManager
+    FastAPIServer --> AuthRouter
+    FastAPIServer --> TaskRouter
+    TaskRouter --> StateGraph
     StateGraph <--> MemorySaver
+    StateGraph --> ToolSuite
+    StateGraph --> ExternalLLM
+    ExternalLLM --> Groq
+    Groq -. Fallback .-> Gemini
+    AuthRouter --> Postgres
+    TaskRouter --> Postgres
+    ToolSuite --> Postgres
+```
 
     StateGraph --> ToolSuite
     StateGraph --> ExternalLLM
@@ -215,94 +204,51 @@ Use these curated prompts in the interface to test and demonstrate each layer of
 
 ---
 
-## ⚡ Quick Start with Docker Compose
+## ⚡ Quick Start (Native Execution)
 
 ### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) & Docker Compose v2.20+
-- Groq API Key ([Get Groq Key](https://console.groq.com/)) and/or Google Gemini Key ([Get Gemini Key](https://aistudio.google.com/))
+- Python 3.11+
+- Node.js 18+ and npm
+- PostgreSQL database (Local or free cloud database like [Supabase](https://supabase.com) / [Neon](https://neon.tech))
+- Groq API Key ([Get Groq Key](https://console.groq.com/)) or Google Gemini Key ([Get Gemini Key](https://aistudio.google.com/))
 - (Optional) Tavily API Key ([Get Tavily Key](https://tavily.com/))
 
-### 1. Clone the Repository
+### 1. Clone & Configure Environment
 ```bash
 git clone https://github.com/your-username/ambientdesk-ai.git
 cd ambientdesk-ai
-```
-
-### 2. Configure Environment Variables
-```bash
 cp .env.example .env
 ```
-Edit `.env` and fill in your API credentials:
-```env
-GROQ_API_KEY=gsk_your_groq_api_key_here
-GOOGLE_API_KEY=AIzaSy_your_gemini_key_here
-TAVILY_API_KEY=tvly_your_tavily_key_here
-DJANGO_SECRET_KEY=your_secure_secret_key
-POSTGRES_PASSWORD=your_db_password
-```
-
-### 3. Launch the Complete Multi-Container Stack
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-### 4. Verify Services
-Check running containers:
-```bash
-docker compose -f docker-compose.prod.yml ps
-```
-The stack will spin up 7 orchestrated containers:
-- 🌐 **ambientdesk_gateway**: Nginx reverse proxy routing traffic on `http://localhost:80`
-- 🖥️ **ambientdesk_frontend**: React 19 + Vite client served with Nginx
-- ⚙️ **ambientdesk_backend**: Django REST Framework + Daphne ASGI (port 8000)
-- 🧠 **ambientdesk_ai_agent**: FastAPI LangGraph state machine service (port 8001)
-- ⚡ **ambientdesk_celery**: Asynchronous background task worker
-- 🗄️ **ambientdesk_postgres**: PostgreSQL 16 with `pgvector` extension
-- 🚦 **ambientdesk_redis**: Redis 7 message broker & WebSocket channel layer
-
-Access the dashboard at **`http://localhost`**!
+Edit `.env` with your API keys and PostgreSQL connection string.
 
 ---
 
-## 🛠️ Local Development Setup (Manual)
-
-If you prefer running services independently without Docker:
-
-### 1. Database & Cache
+### 2. Run the Unified FastAPI Backend
 ```bash
-docker compose up -d postgres redis
-```
-
-### 2. AI Agent Engine (FastAPI)
-```bash
-cd services/ai-agent
+cd backend
 python -m venv .venv
-# On Windows: .venv\Scripts\activate | On Linux/Mac: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
 
-### 3. Backend & Asynchronous Worker (Django)
-```bash
-cd services/backend
-python -m venv .venv
-# Activate virtual environment
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 8000
-```
-In a separate terminal, start the Celery worker:
-```bash
-celery -A core worker -l info
-```
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+# source .venv/bin/activate
 
-### 4. Frontend (React + Vite)
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
+```
+*The FastAPI backend will automatically verify and initialize database tables and the `pgvector` extension upon startup at `http://localhost:8000`.*
+*(You can also run `python run_backend.py` directly from the workspace root).*
+
+---
+
+### 3. Run the React Frontend
+In a new terminal:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open `http://localhost:5173` to test live changes with Hot Module Replacement (HMR).
+Open **`http://localhost:5173`** in your browser!
 
 ---
 
@@ -311,18 +257,20 @@ Open `http://localhost:5173` to test live changes with Hot Module Replacement (H
 ### REST Endpoints
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :---: |
-| `POST` | `/api/accounts/register/` | Register new user account | No |
-| `POST` | `/api/accounts/login/` | Authenticate and obtain session/token | No |
-| `GET` | `/api/tasks/` | List all historical user tasks with status | Yes |
-| `POST` | `/api/tasks/create/` | Dispatch a new task to LangGraph | Yes |
-| `POST` | `/api/tasks/<id>/approve/` | Approve or reject a paused HITL action | Yes |
+| `POST` | `/api/auth/register` | Register new user account | No |
+| `POST` | `/api/auth/login` | Authenticate and obtain JWT access/refresh token | No |
+| `GET` | `/api/auth/me` | Fetch authenticated user profile and stats | Yes |
+| `GET` | `/api/tasks` | List all user tasks with status | Yes |
+| `POST` | `/api/tasks/create` | Dispatch a new task to LangGraph | Yes |
+| `POST` | `/api/tasks/{id}/approve` | Approve or reject a paused HITL action | Yes |
+| `GET` | `/api/health` | Service health check | No |
 
 ### WebSocket Real-Time Stream
-- **URL:** `ws://localhost/ws/tasks/<task_id>/`
+- **URL:** `ws://localhost:8000/ws/tasks/{task_id}/`
 - **Events Broadcasted:**
   - `node_transition`: Emits `{ "node": "triage" | "approval" | "agent" | "tools" }`
   - `token_stream`: Real-time streaming tokens generated by the LLM
-  - `hitl_requested`: Emitted when action requires human approval
+  - `hitl_requested`: Emitted when an action requires human approval
   - `task_completed`: Final output payload and execution timing metrics
 
 ---
@@ -331,39 +279,38 @@ Open `http://localhost:5173` to test live changes with Hot Module Replacement (H
 
 ```text
 ambientdesk-ai/
-├── docs/
-│   └── images/
-│       ├── banner.jpg                 # Project Hero Banner
-│       └── workflow_preview.jpg       # HITL & Agent Architecture Graphic
+├── docs/                              # Architecture previews & diagrams
+├── backend/                           # Unified FastAPI Backend
+│   ├── app/
+│   │   ├── agent/                     # LangGraph Multi-Agent Engine
+│   │   │   ├── graph.py               # StateGraph & Node Definitions
+│   │   │   ├── llm.py                 # Groq & Gemini Resilient Fallback Factory
+│   │   │   ├── state.py               # AgentState & Pydantic Schemas
+│   │   │   ├── tools.py               # Tavily, pgvector RAG, AST Math, Email Tools
+│   │   │   └── vector_store.py        # pgvector Embeddings & Search
+│   │   ├── api/                       # API Endpoints
+│   │   │   ├── auth.py                # JWT Auth & Profile Routes
+│   │   │   ├── tasks.py               # Task Creation & HITL Approval Routes
+│   │   │   └── websockets.py          # Native Async WebSocket Streaming
+│   │   ├── core/                      # Core Infrastructure
+│   │   │   ├── database.py            # Async SQLAlchemy Engine & Session
+│   │   │   └── security.py            # Password Hashing & JWT Verification
+│   │   ├── models/                    # SQLAlchemy Database Models (User, Task, Log)
+│   │   ├── schemas/                   # Pydantic Request/Response Schemas
+│   │   ├── websocket_manager.py       # Live WebSocket Hub
+│   │   ├── config.py                  # Pydantic Settings
+│   │   └── main.py                    # FastAPI Entrypoint & Lifecycle
+│   └── requirements.txt               # Backend Dependencies
 ├── frontend/                          # React 19 + TypeScript + Vite Client
 │   ├── src/
-│   │   ├── App.tsx                    # Main Dashboard & Stream View
-│   │   ├── MarkdownRenderer.tsx       # Syntax Highlighted Output
-│   │   ├── api.ts                     # REST Client
-│   │   └── types.ts                   # TypeScript Interfaces
-│   ├── Dockerfile
-│   └── nginx.conf
-├── services/
-│   ├── ai-agent/                      # FastAPI + LangGraph Agent Core
-│   │   ├── app/
-│   │   │   ├── agent/
-│   │   │   │   ├── graph.py           # LangGraph StateGraph & Node Definitions
-│   │   │   │   ├── llm.py             # Groq & Gemini Resilient Fallback Factory
-│   │   │   │   ├── state.py           # AgentState & Pydantic Schemas
-│   │   │   │   ├── tools.py           # Tavily, pgvector, AST Math, Email Tools
-│   │   │   │   └── vector_store.py    # pgvector Embeddings & Search
-│   │   │   └── main.py                # FastAPI Application & Execution Endpoint
-│   │   └── Dockerfile
-│   └── backend/                       # Django 5 + Daphne ASGI Backend
-│       ├── core/                      # Settings, ASGI/WS Routing, Celery Conf
-│       ├── accounts/                  # Auth, Profiles, Security
-│       ├── tasks/                     # Task Model, Consumers, Views, Celery Tasks
-│       └── Dockerfile
-├── nginx/
-│   └── nginx.conf                     # Production Gateway Reverse Proxy
-├── docker-compose.yml                 # Local PostgreSQL & Redis stack
-├── docker-compose.prod.yml            # Complete 7-container production stack
-├── DEPLOYMENT.md                      # Cloud VPS / Ubuntu / Certbot Setup
+│   │   ├── App.tsx                    # Main Dashboard & Live Stream View
+│   │   ├── api.ts                     # Typed REST Client
+│   │   ├── types.ts                   # TypeScript Interfaces
+│   │   └── MarkdownRenderer.tsx       # Syntax Highlighted Output
+│   └── package.json
+├── run_backend.py                     # Convenience Root Runner
+├── .env.example                       # Cleaned Environment Template
+├── DEPLOYMENT.md                      # Production Deployment Guide
 └── README.md                          # Project Documentation
 ```
 

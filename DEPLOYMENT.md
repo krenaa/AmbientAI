@@ -1,137 +1,105 @@
-# AmbientDesk AI — Live Production Deployment Guide
+# 🚀 AmbientDesk AI — Free Production Deployment Guide
+## (FastAPI on Render + React on Vercel + pgvector on Neon/Supabase)
 
-This guide walks you through deploying **AmbientDesk AI** to a live production server.
-
----
-
-## 1. Prerequisites & Environment Setup
-
-### Production `.env` File
-Create a `.env` file on your server (or in root directory) based on `.env.example`:
-
-```bash
-# --- AI Provider Keys ---
-GROQ_API_KEY=gsk_...
-GROQ_MODEL=llama-3.3-70b-versatile
-GOOGLE_API_KEY=AIza...
-GOOGLE_MODEL=gemini-2.0-flash
-TAVILY_API_KEY=tvly-...
-
-# --- Observability ---
-LANGSMITH_TRACING=true
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-LANGSMITH_API_KEY=lsv2_...
-LANGSMITH_PROJECT=ambientdesk-prod
-
-# --- Database & Cache ---
-POSTGRES_DB=ambientdesk_db
-POSTGRES_USER=ambientdesk_user
-POSTGRES_PASSWORD=generate_a_secure_postgres_password
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-REDIS_URL=redis://redis:6379/0
-
-# --- Service Communication ---
-AI_AGENT_SERVICE_URL=http://ai-agent:8001
-AI_AGENT_INTERNAL_TOKEN=generate_a_random_32_char_token
-
-# --- Django Security (Production) ---
-DJANGO_SECRET_KEY=generate_a_strong_50_character_secret_key
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com,localhost,backend
-CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-DJANGO_CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-```
+This guide provides step-by-step instructions to deploy **AmbientDesk AI** completely free of charge.
 
 ---
 
-## 2. Deploying to Any Cloud VPS (DigitalOcean / Hetzner / AWS EC2 / Linode)
+## Architecture Overview
+* **Backend**: `backend/` directory ➔ Hosted on **Render** (Free Web Service)
+* **Frontend**: `frontend/` directory ➔ Hosted on **Vercel** (Free Tier)
+* **Database**: PostgreSQL with `pgvector` ➔ Hosted on **Neon** or **Supabase** (Free Tier)
 
-This is the recommended, cost-effective ($10–$20/mo) option that handles WebSockets smoothly without platform timeouts.
+---
 
-### Step 1: Install Docker & Docker Compose
-On your Ubuntu/Debian server:
-```bash
-sudo apt update && sudo apt install -y docker.io docker-compose-plugin
-sudo systemctl enable --now docker
-```
+## Step 1: Database Setup (Neon PostgreSQL with pgvector) — 100% Free
 
-### Step 2: Clone Code & Configure
-```bash
-git clone <your-repo-url> ambientdesk-ai
-cd ambientdesk-ai
-cp .env.example .env
-# Edit .env with your real API keys and secrets:
-nano .env
-```
+1. Go to [neon.tech](https://neon.tech) and create a free account.
+2. Create a new project named `ambientdesk-db`.
+3. In the Neon Console, go to the **SQL Editor** and enable `pgvector`:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
+4. Copy your connection string from the Neon dashboard (e.g.):
+   `postgresql://username:password@ep-xyz.us-east-2.aws.neon.tech/neondb?sslmode=require`
 
-### Step 3: Launch the Full Stack
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
+---
 
-### Step 4: Verify Running Containers
-```bash
-docker compose -f docker-compose.prod.yml ps
-```
-You should see 7 running containers:
-* `ambientdesk_postgres` (pgvector)
-* `ambientdesk_redis` (message broker & channel layer)
-* `ambientdesk_ai_agent` (FastAPI LangGraph engine)
-* `ambientdesk_backend` (Django REST & Daphne ASGI)
-* `ambientdesk_celery` (Background task worker)
-* `ambientdesk_frontend` (Vite build served by Nginx)
-* `ambientdesk_gateway` (Gateway reverse proxy on port 80)
+## Step 2: Backend Deployment on Render (`backend/` folder) — 100% Free
 
-### Step 5: (Optional) Setup Free SSL with Certbot
-Install Certbot for automated HTTPS:
+1. Go to [render.com](https://render.com) and sign in.
+2. Click **New +** ➔ **Web Service**.
+3. Connect your GitHub repository (`ambientdesk-ai`).
+4. Configure the Web Service settings:
+   - **Name**: `ambientdesk-backend`
+   - **Region**: Same region as your database (e.g. `Ohio (US East)` or `Frankfurt`)
+   - **Branch**: `main`
+   - **Root Directory**: `backend`
+   - **Runtime**: `Python 3`
+   - **Build Command**:
+     ```bash
+     pip install -r requirements.txt
+     ```
+   - **Start Command**:
+     ```bash
+     python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+     ```
+   - **Instance Type**: `Free`
+
+5. Add **Environment Variables** in Render dashboard:
+   | Key | Value / Example | Notes |
+   |---|---|---|
+   | `DATABASE_URL` | `postgresql://user:pass@ep-xyz.neon.tech/neondb?sslmode=require` | From Neon / Supabase |
+   | `SECRET_KEY` | `generate_a_random_32_char_secret_key` | For JWT authentication |
+   | `GROQ_API_KEY` | `gsk_...` | From [console.groq.com](https://console.groq.com) |
+   | `GOOGLE_API_KEY` | `AIza...` | From [aistudio.google.com](https://aistudio.google.com) |
+   | `TAVILY_API_KEY` | `tvly-...` | From [tavily.com](https://tavily.com) |
+   | `ALLOWED_ORIGINS` | `*` or `https://your-app.vercel.app` | Comma-separated domains |
+   | `ENVIRONMENT` | `production` | Production mode |
+   | `DEBUG` | `False` | Disable debug reloader |
+
+6. Click **Create Web Service**. Once deployed, copy your Render URL:
+   `https://ambientdesk-backend.onrender.com`
+
+---
+
+## Step 3: Create Admin User on Production Database
+
+Run the admin creation script locally or using Render shell:
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
-```
-Configure your domain DNS A-record to point to your VPS IP, then run:
-```bash
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+python backend/create_admin.py --email admin@ambientdesk.ai --password "YourStrongAdminPassword123!"
 ```
 
 ---
 
-## 3. Alternative: Deploying to Managed PaaS (Railway / Render)
+## Step 4: Frontend Deployment on Vercel (`frontend/` folder) — 100% Free
 
-If you prefer managed cloud platforms:
-
-### Railway (One-Click)
-1. **New Project** -> Deploy from GitHub repo.
-2. Add **PostgreSQL** plugin (enable `pgvector` extension in database console).
-3. Add **Redis** plugin.
-4. Deploy the 3 services:
-   * **AI Agent**: Root `/services/ai-agent`, start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   * **Backend**: Root `/services/backend`, start command: `daphne -b 0.0.0.0 -p $PORT core.asgi:application`
-   * **Celery**: Root `/services/backend`, start command: `celery -A core worker -l info`
-   * **Frontend**: Root `/frontend`, build: `npm run build`, output: `dist/`
+1. Go to [vercel.com](https://vercel.com) and sign in.
+2. Click **Add New...** ➔ **Project** and import your `ambientdesk-ai` repository.
+3. Configure the project settings:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: `frontend` *(Click Edit and select `frontend`)*
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+   - **Install Command**: `npm install`
+4. Add Environment Variable:
+   - **Key**: `VITE_API_URL`
+   - **Value**: `https://<YOUR-RENDER-BACKEND-NAME>.onrender.com/api`
+5. Click **Deploy**.
 
 ---
 
-## 4. Operational Commands & Maintenance
+## Step 5: Verify Live Deployment
 
-### Check Logs in Real Time
-```bash
-# View backend logs
-docker logs -f ambientdesk_backend
+1. Visit your Vercel URL (e.g. `https://ambientdesk.vercel.app`).
+2. Log in with your admin credentials (`admin@admin.com` or `admin@ambientdesk.ai`).
+3. Verify that the WebSocket indicator displays **Live Neural Stream**.
+4. Run an agent prompt (e.g. `"Search the live web for latest AI news"`).
 
-# View AI agent execution logs
-docker logs -f ambientdesk_ai_agent
+---
 
-# View Celery task execution
-docker logs -f ambientdesk_celery
-```
+## Troubleshooting & Tips
 
-### Create a Superuser
-```bash
-docker exec -it ambientdesk_backend python manage.py createsuperuser
-```
-
-### Update Code & Redeploy
-```bash
-git pull origin main
-docker compose -f docker-compose.prod.yml up -d --build
-```
+* **Render Free Tier Spin-Down**: Free instances on Render spin down after 15 minutes of inactivity. The first request after spin-down may take ~30 seconds to wake up.
+* **CORS Settings**: Ensure your Render `ALLOWED_ORIGINS` includes your Vercel URL (e.g. `https://ambientdesk.vercel.app`) or `*`.
+* **Single Page App (SPA) Routing**: Vercel SPA rewrites are already configured in `frontend/vercel.json`.

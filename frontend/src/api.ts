@@ -85,6 +85,7 @@ export const fetchCurrentUser = async () => {
 
 export const updateProfile = async (data: {
   full_name?: string;
+  email?: string;
   current_password?: string;
   new_password?: string;
 }) => {
@@ -102,6 +103,11 @@ export const logout = (): void => {
 
 export const fetchTasks = async (): Promise<AgentTask[]> => {
   const res = await apiClient.get("/tasks/");
+  return res.data;
+};
+
+export const fetchTaskById = async (taskId: string): Promise<AgentTask> => {
+  const res = await apiClient.get(`/tasks/${taskId}/`);
   return res.data;
 };
 
