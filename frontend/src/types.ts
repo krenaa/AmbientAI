@@ -39,6 +39,7 @@ export interface UserProfile {
 
 export interface AgentTask {
   id: string;
+  title?: string;
   prompt: string;
   status: TaskStatus;
   triage_category?: TriageCategory;

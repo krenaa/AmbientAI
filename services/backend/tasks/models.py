@@ -26,6 +26,12 @@ class AgentTask(models.Model):
         on_delete=models.CASCADE,
         related_name="agent_tasks",
     )
+    title = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Custom title or topic for this chat session",
+    )
     prompt = models.TextField(help_text="User's initial instruction or request")
     status = models.CharField(
         max_length=32,
@@ -53,6 +59,13 @@ class AgentTask(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.title and self.prompt:
+            first_line = self.prompt.strip().split("\n")[0]
+            clean_line = first_line.replace("[Follow-up]:", "").strip()
+            self.title = clean_line[:80].strip() or "Untitled Chat"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Task {self.id} [{self.status}] - {self.user.email}"

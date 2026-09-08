@@ -16,6 +16,7 @@ class AgentTaskSerializer(serializers.ModelSerializer):
         model = AgentTask
         fields = [
             "id",
+            "title",
             "user",
             "user_email",
             "prompt",

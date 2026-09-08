@@ -121,3 +121,23 @@ export const approveTask = async (taskId: string, approved: boolean): Promise<an
   const res = await apiClient.post(`/tasks/${taskId}/approve/`, { approved });
   return res.data;
 };
+
+export const renameTask = async (
+  taskId: string,
+  title: string
+): Promise<AgentTask> => {
+  try {
+    const res = await apiClient.patch(`/tasks/${taskId}/rename/`, { title });
+    return res.data;
+  } catch (err: any) {
+    if (err.response && err.response.status === 404) {
+      const fallback = await apiClient.patch(`/tasks/${taskId}/`, { title });
+      return fallback.data;
+    }
+    throw err;
+  }
+};
+
+export const deleteTask = async (taskId: string): Promise<void> => {
+  await apiClient.delete(`/tasks/${taskId}/`);
+};

@@ -117,3 +117,27 @@ class AgentTaskViewSet(viewsets.ModelViewSet):
             msg = "Action rejected by user."
 
         return Response({"detail": msg, "task": AgentTaskSerializer(task).data})
+
+    @action(detail=True, methods=["patch", "post"], url_path="rename")
+    def rename_task(self, request, pk=None):
+        """Rename a chat task session."""
+        task = self.get_object()
+        new_title = request.data.get("title", "").strip()
+        if not new_title:
+            return Response(
+                {"detail": "Chat title cannot be empty."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        task.title = new_title[:255]
+        task.save(update_fields=["title", "updated_at"])
+        return Response(AgentTaskSerializer(task).data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        """Permanently delete a chat session and its execution logs."""
+        instance = self.get_object()
+        task_id = str(instance.id)
+        self.perform_destroy(instance)
+        return Response(
+            {"detail": "Chat session deleted successfully", "task_id": task_id},
+            status=status.HTTP_200_OK,
+        )

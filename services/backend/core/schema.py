@@ -71,6 +71,7 @@ class TaskExecutionLogType:
 @strawberry.type
 class AgentTaskType:
     id: str
+    title: Optional[str] = None
     prompt: str
     status: str
     triage_category: Optional[str] = None
@@ -143,6 +144,7 @@ def build_task_type(task: AgentTask) -> AgentTaskType:
 
     return AgentTaskType(
         id=str(task.id),
+        title=task.title,
         prompt=task.prompt,
         status=task.status,
         triage_category=task.triage_category,
@@ -259,6 +261,35 @@ class Mutation:
             )
 
         return build_task_type(task)
+
+    @strawberry.mutation
+    def rename_task(
+        self, info: Info, task_id: str, title: str
+    ) -> Optional[AgentTaskType]:
+        """Rename a chat task session."""
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception("Authentication required.")
+        try:
+            task = AgentTask.objects.get(id=task_id, user=user)
+            task.title = title.strip()[:255]
+            task.save(update_fields=["title", "updated_at"])
+            return build_task_type(task)
+        except AgentTask.DoesNotExist:
+            raise Exception("Task not found.")
+
+    @strawberry.mutation
+    def delete_task(self, info: Info, task_id: str) -> bool:
+        """Permanently delete a chat task session."""
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception("Authentication required.")
+        try:
+            task = AgentTask.objects.get(id=task_id, user=user)
+            task.delete()
+            return True
+        except AgentTask.DoesNotExist:
+            return False
 
     @strawberry.mutation
     def update_profile(

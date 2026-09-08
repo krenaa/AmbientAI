@@ -30,6 +30,8 @@ import {
   KeyRound,
   Plus,
   Menu,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import type { AgentTask, UserProfile } from "./types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -41,6 +43,8 @@ import {
   fetchTasks,
   createTask,
   approveTask,
+  renameTask,
+  deleteTask,
   fetchCurrentUser,
   updateProfile,
 } from "./api";
@@ -126,6 +130,92 @@ export default function App() {
     setSelectedTask(task);
     setShowEarlierTurns(false);
     setIsMobileMenuOpen(false);
+  };
+
+  // Chat Rename and Delete State
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>("");
+  const [isRenaming, setIsRenaming] = useState<boolean>(false);
+  const [taskToDelete, setTaskToDelete] = useState<AgentTask | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  const handleStartRename = (task: AgentTask, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingTaskId(task.id);
+    const initialTitle = task.title || task.prompt.split("\n\n[Follow-up]: ")[0];
+    setEditingTitle(initialTitle);
+  };
+
+  const handleSaveRename = async (taskId: string, e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const trimmed = editingTitle.trim();
+    if (!trimmed) {
+      showToast("Chat title cannot be empty", "error");
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      const updated = await renameTask(taskId, trimmed);
+      const newTitle = updated.title || trimmed;
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, title: newTitle } : t))
+      );
+      if (selectedTask?.id === taskId) {
+        setSelectedTask((prev) => (prev ? { ...prev, title: newTitle } : null));
+      }
+      setEditingTaskId(null);
+      showToast("Chat renamed successfully", "success");
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || "Failed to rename chat", "error");
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleCancelRename = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingTaskId(null);
+    setEditingTitle("");
+  };
+
+  const handleOpenDeleteModal = (task: AgentTask, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setTaskToDelete(task);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!taskToDelete) return;
+    setIsDeleting(true);
+    const idToDelete = taskToDelete.id;
+    try {
+      await deleteTask(idToDelete);
+      if (socketsRef.current[idToDelete]) {
+        socketsRef.current[idToDelete].close();
+        delete socketsRef.current[idToDelete];
+      }
+      setTasks((prev) => {
+        const nextTasks = prev.filter((t) => t.id !== idToDelete);
+        if (selectedTask?.id === idToDelete) {
+          if (nextTasks.length > 0) {
+            setSelectedTask(nextTasks[0]);
+          } else {
+            setSelectedTask(null);
+            isNewChatRef.current = true;
+            setIsNewChat(true);
+          }
+        }
+        return nextTasks;
+      });
+      showToast("Chat session deleted", "info");
+      setTaskToDelete(null);
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || "Failed to delete chat", "error");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Profile Modal State
@@ -468,6 +558,7 @@ export default function App() {
 
   const filteredTasks = tasks.filter((task) => {
     const matchesQuery =
+      (task.title && task.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
       task.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.id.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
@@ -952,44 +1043,127 @@ export default function App() {
             ) : (
               filteredTasks.map((task) => {
                 const isSelected = selectedTask?.id === task.id;
+                const isEditingThis = editingTaskId === task.id;
                 const promptTitle = task.prompt.split("\n\n[Follow-up]: ")[0];
+                const displayTitle = task.title || promptTitle || "Untitled chat";
+
                 return (
                   <div
                     key={task.id}
-                    onClick={() => selectTask(task)}
-                    className={`group relative cursor-pointer rounded-xl border p-3 transition-all ${
-                      isSelected
-                        ? "border-emerald-500/60 bg-emerald-950/20 shadow-md shadow-emerald-500/5"
-                        : "border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900/40"
+                    onClick={() => {
+                      if (!isEditingThis) selectTask(task);
+                    }}
+                    className={`group relative rounded-xl border p-3 transition-all ${
+                      isEditingThis
+                        ? "border-emerald-500 bg-zinc-900/90 ring-1 ring-emerald-500/50"
+                        : isSelected
+                        ? "border-emerald-500/60 bg-emerald-950/20 shadow-md shadow-emerald-500/5 cursor-pointer"
+                        : "border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900/40 cursor-pointer"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className={`line-clamp-1 text-xs font-semibold ${isSelected ? "text-white" : "text-zinc-200"}`}>
-                        {promptTitle || "Untitled chat"}
-                      </p>
-                      {task.status === "processing" ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400 shrink-0 mt-0.5" />
-                      ) : task.status === "awaiting_approval" ? (
-                        <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0 mt-1" />
-                      ) : (
-                        <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
-                          {new Date(task.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-zinc-400">
-                      <div className="flex items-center space-x-1.5">
-                        {renderCategoryIcon(task.triage_category)}
-                        <span className="text-[10px] capitalize text-zinc-400">
-                          {task.triage_category?.replace("_", " ") || "Chat"}
-                        </span>
-                      </div>
-                      {task.prompt.includes("\n\n[Follow-up]: ") && (
-                        <span className="text-[10px] text-teal-400 font-medium">
-                          {task.prompt.split("\n\n[Follow-up]: ").length} msgs
-                        </span>
-                      )}
-                    </div>
+                    {isEditingThis ? (
+                      <form
+                        onSubmit={(e) => handleSaveRename(task.id, e)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="space-y-2"
+                      >
+                        <input
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          autoFocus
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none"
+                          placeholder="Chat title..."
+                          disabled={isRenaming}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") handleCancelRename();
+                          }}
+                        />
+                        <div className="flex items-center justify-end space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={handleCancelRename}
+                            disabled={isRenaming}
+                            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                            title="Cancel (Esc)"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isRenaming}
+                            className="flex items-center space-x-1 rounded-md bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-zinc-950 hover:bg-emerald-400"
+                            title="Save rename"
+                          >
+                            {isRenaming ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Check className="h-3 w-3 stroke-[2.5]" />
+                            )}
+                            <span>Save</span>
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p
+                            className={`line-clamp-1 text-xs font-semibold flex-1 ${
+                              isSelected ? "text-white" : "text-zinc-200"
+                            }`}
+                            title={displayTitle}
+                          >
+                            {displayTitle}
+                          </p>
+                          {task.status === "processing" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400 shrink-0 mt-0.5" />
+                          ) : task.status === "awaiting_approval" ? (
+                            <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0 mt-1" />
+                          ) : (
+                            <span className="text-[10px] text-zinc-500 shrink-0 font-mono">
+                              {new Date(task.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+                          <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                            {renderCategoryIcon(task.triage_category)}
+                            <span className="text-[10px] capitalize text-zinc-400 truncate">
+                              {task.triage_category?.replace("_", " ") || "Chat"}
+                            </span>
+                            {task.prompt.includes("\n\n[Follow-up]: ") && (
+                              <span className="text-[10px] text-teal-400 font-medium shrink-0 ml-0.5">
+                                · {task.prompt.split("\n\n[Follow-up]: ").length} msgs
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Quick Action Buttons (Rename & Delete) */}
+                          <div className="flex items-center space-x-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={(e) => handleStartRename(task, e)}
+                              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
+                              title="Rename chat"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenDeleteModal(task, e)}
+                              className="rounded-md p-1 text-zinc-400 hover:bg-rose-500/20 hover:text-rose-400 transition"
+                              title="Delete chat"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })
@@ -1090,6 +1264,87 @@ export default function App() {
 
                   return (
                     <div className="space-y-6 pb-6">
+                      {/* Active Chat Top Bar (Header with Title, Rename & Delete) */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-3.5 backdrop-blur-md shadow-sm">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-800/80 border border-zinc-700/60 shrink-0">
+                            {renderCategoryIcon(selectedTask.triage_category)}
+                          </div>
+                          {editingTaskId === selectedTask.id ? (
+                            <form
+                              onSubmit={(e) => handleSaveRename(selectedTask.id, e)}
+                              className="flex items-center space-x-2 flex-1 max-w-md"
+                            >
+                              <input
+                                type="text"
+                                value={editingTitle}
+                                onChange={(e) => setEditingTitle(e.target.value)}
+                                autoFocus
+                                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none"
+                                placeholder="Chat title..."
+                                disabled={isRenaming}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") handleCancelRename();
+                                }}
+                              />
+                              <button
+                                type="submit"
+                                disabled={isRenaming}
+                                className="flex items-center space-x-1 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-emerald-400"
+                                title="Save title"
+                              >
+                                {isRenaming ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                )}
+                                <span className="hidden sm:inline">Save</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelRename}
+                                className="rounded-lg border border-zinc-800 p-1.5 text-zinc-400 hover:text-zinc-200"
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center space-x-2 min-w-0 group">
+                              <h2
+                                className="text-sm sm:text-base font-semibold text-zinc-100 truncate"
+                                title={selectedTask.title || selectedTask.prompt.split("\n\n[Follow-up]: ")[0] || "Untitled Chat"}
+                              >
+                                {selectedTask.title || selectedTask.prompt.split("\n\n[Follow-up]: ")[0] || "Untitled Chat"}
+                              </h2>
+                              <button
+                                type="button"
+                                onClick={(e) => handleStartRename(selectedTask, e)}
+                                className="rounded-md p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition opacity-80 group-hover:opacity-100"
+                                title="Rename chat session"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <span className="hidden md:inline text-[11px] text-zinc-500 font-mono">
+                            ID: {selectedTask.id.slice(0, 8)}...
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteModal(selectedTask)}
+                            className="flex items-center space-x-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition active:scale-95"
+                            title="Delete this chat session"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Delete Chat</span>
+                          </button>
+                        </div>
+                      </div>
+
                       {/* Optional Earlier Conversation Turns */}
                       {earlierTurns.length > 0 && (
                         <div className="space-y-3">
@@ -1779,6 +2034,63 @@ export default function App() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {taskToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-rose-400">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-100">Delete Chat Session</h3>
+                <p className="text-xs text-zinc-400">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
+              <span className="text-zinc-500 block text-[10px] uppercase font-mono mb-1">Target Chat:</span>
+              <p className="line-clamp-2 font-medium text-zinc-200">
+                {taskToDelete.title || taskToDelete.prompt.split("\n\n[Follow-up]: ")[0]}
+              </p>
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Are you sure you want to permanently delete this chat? All execution logs, reasoning history, and responses will be erased.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                disabled={isDeleting}
+                className="rounded-xl border border-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="flex items-center space-x-2 rounded-xl bg-rose-500 px-4 py-2 text-xs font-bold text-white hover:bg-rose-600 transition disabled:opacity-50 shadow-md shadow-rose-500/20"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Delete Chat</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
