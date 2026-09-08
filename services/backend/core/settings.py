@@ -85,17 +85,40 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
-# Database Configuration (Docker Postgres)
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "ambientdesk_db"),
-        "USER": os.getenv("POSTGRES_USER", "ambientdesk_user"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "ambientdesk_secret"),
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+# Database Configuration (Docker Postgres or Cloud DATABASE_URL)
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    from urllib.parse import urlparse, unquote, parse_qs
+    url = urlparse(database_url)
+    query_params = parse_qs(url.query)
+    db_options = {}
+    if "sslmode" in query_params:
+        db_options["sslmode"] = query_params["sslmode"][0]
+    elif "neon.tech" in (url.hostname or "") or "supabase.co" in (url.hostname or ""):
+        db_options["sslmode"] = "require"
+
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": url.path.lstrip("/"),
+            "USER": unquote(url.username or ""),
+            "PASSWORD": unquote(url.password or ""),
+            "HOST": url.hostname or "localhost",
+            "PORT": str(url.port or "5432"),
+            "OPTIONS": db_options,
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "ambientdesk_db"),
+            "USER": os.getenv("POSTGRES_USER", "ambientdesk_user"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "ambientdesk_secret"),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.CustomUser"
@@ -154,19 +177,13 @@ default_origins = [
     "http://localhost",
 ]
 env_cors = os.getenv("CORS_ALLOWED_ORIGINS", "")
-CORS_ALLOWED_ORIGINS = (
-    [origin.strip() for origin in env_cors.split(",") if origin.strip()]
-    if env_cors
-    else default_origins
-)
+parsed_cors = [origin.strip() for origin in env_cors.split(",") if origin.strip()] if env_cors else []
+CORS_ALLOWED_ORIGINS = list(set(default_origins + parsed_cors))
 CORS_ALLOW_CREDENTIALS = True
 
 env_csrf = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "")
-CSRF_TRUSTED_ORIGINS = (
-    [origin.strip() for origin in env_csrf.split(",") if origin.strip()]
-    if env_csrf
-    else default_origins + ["http://localhost:8000", "http://127.0.0.1:8000"]
-)
+parsed_csrf = [origin.strip() for origin in env_csrf.split(",") if origin.strip()] if env_csrf else []
+CSRF_TRUSTED_ORIGINS = list(set(default_origins + ["http://localhost:8000", "http://127.0.0.1:8000"] + parsed_csrf))
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

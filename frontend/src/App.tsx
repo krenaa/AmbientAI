@@ -402,7 +402,12 @@ export default function App() {
 
   const handleCopyOutput = () => {
     if (!selectedTask?.output) return;
-    navigator.clipboard.writeText(selectedTask.output);
+    const rawOutputTurns = selectedTask.output
+      .split(/(?:\r?\n\s*)*\[Follow-up\]:\s*/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const textToCopy = rawOutputTurns[rawOutputTurns.length - 1] || selectedTask.output;
+    navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     showToast("Response copied to clipboard!", "success");
     setTimeout(() => setCopied(false), 2000);
@@ -1032,8 +1037,51 @@ export default function App() {
                     .map((t) => t.trim())
                     .filter(Boolean);
                   const promptTurns = rawTurns.length > 0 ? rawTurns : [selectedTask.prompt.trim()];
-                  const activePrompt = promptTurns[promptTurns.length - 1] || selectedTask.prompt;
-                  const earlierTurns = promptTurns.slice(0, promptTurns.length - 1);
+
+                  // Parse all assistant output turns
+                  const rawOutputTurns = selectedTask.output
+                    ? selectedTask.output
+                        .split(/(?:\r?\n\s*)*\[Follow-up\]:\s*/)
+                        .map((t) => t.trim())
+                        .filter(Boolean)
+                    : [];
+
+                  interface ConversationTurn {
+                    index: number;
+                    prompt: string;
+                    output?: string;
+                    isLatest: boolean;
+                  }
+
+                  const turns: ConversationTurn[] = promptTurns.map((turnPrompt, idx) => {
+                    const isLatest = idx === promptTurns.length - 1;
+                    let turnOutput: string | undefined = undefined;
+
+                    if (rawOutputTurns.length === promptTurns.length) {
+                      turnOutput = rawOutputTurns[idx];
+                    } else if (rawOutputTurns.length === promptTurns.length - 1 && !isLatest) {
+                      turnOutput = rawOutputTurns[idx];
+                    } else if (isLatest && rawOutputTurns.length > 0) {
+                      turnOutput = rawOutputTurns[rawOutputTurns.length - 1];
+                    } else if (idx < rawOutputTurns.length) {
+                      turnOutput = rawOutputTurns[idx];
+                    }
+
+                    return {
+                      index: idx,
+                      prompt: turnPrompt,
+                      output: turnOutput,
+                      isLatest,
+                    };
+                  });
+
+                  const earlierTurns = turns.slice(0, turns.length - 1);
+                  const latestTurn = turns[turns.length - 1] || {
+                    index: 0,
+                    prompt: selectedTask.prompt,
+                    output: selectedTask.output,
+                    isLatest: true,
+                  };
 
                   // Filter out system user_message logs so only actual agent steps remain
                   const agentLogs = (selectedTask.logs || []).filter(
@@ -1048,20 +1096,59 @@ export default function App() {
                           <div className="flex justify-center">
                             <button
                               onClick={() => setShowEarlierTurns(!showEarlierTurns)}
-                              className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition"
+                              className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3.5 py-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition shadow-sm"
                             >
                               {showEarlierTurns
                                 ? "Hide earlier turns"
-                                : `${earlierTurns.length} earlier ${earlierTurns.length === 1 ? "message" : "messages"} in conversation`}
+                                : `${earlierTurns.length} earlier ${earlierTurns.length === 1 ? "turn" : "turns"} in conversation`}
                             </button>
                           </div>
                           {showEarlierTurns && (
-                            <div className="space-y-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4 animate-in fade-in duration-200">
-                              {earlierTurns.map((turn, i) => (
-                                <div key={i} className="flex justify-end">
-                                  <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-zinc-800/70 px-4 py-2 text-xs text-zinc-300 border border-zinc-700/40">
-                                    <p className="whitespace-pre-wrap">{turn}</p>
+                            <div className="space-y-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4 sm:p-5 animate-in fade-in duration-200">
+                              {earlierTurns.map((turn) => (
+                                <div
+                                  key={turn.index}
+                                  className="space-y-4 border-b border-zinc-800/60 pb-5 last:border-b-0 last:pb-0"
+                                >
+                                  {/* User Turn Speech Bubble */}
+                                  <div className="flex justify-end">
+                                    <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-zinc-800/80 px-4 py-2.5 text-xs sm:text-sm text-zinc-200 border border-zinc-700/40 leading-relaxed shadow-sm">
+                                      <p className="whitespace-pre-wrap">{turn.prompt}</p>
+                                    </div>
                                   </div>
+
+                                  {/* Assistant Turn Response */}
+                                  {turn.output ? (
+                                    <div className="flex items-start space-x-3.5 group pt-1">
+                                      <div
+                                        className={`flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700/70 ${theme.iconColor} shrink-0 mt-0.5 shadow-sm`}
+                                      >
+                                        <Bot className="h-4 w-4" />
+                                      </div>
+                                      <div className="flex-1 space-y-2 min-w-0">
+                                        <div className="text-zinc-200 text-xs sm:text-sm leading-relaxed break-words">
+                                          <MarkdownRenderer content={turn.output} />
+                                        </div>
+                                        <div className="flex items-center space-x-2 pt-0.5 text-xs text-zinc-500">
+                                          <button
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(turn.output!);
+                                              showToast("Response copied to clipboard!", "success");
+                                            }}
+                                            className="inline-flex items-center space-x-1.5 rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 transition active:scale-95 text-[11px]"
+                                            title="Copy response"
+                                          >
+                                            <Copy className="h-3 w-3" />
+                                            <span>Copy</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center space-x-2 text-xs text-zinc-500 italic pl-10">
+                                      <span>Response not retained in earlier session history</span>
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1072,7 +1159,7 @@ export default function App() {
                       {/* 1. User Message (Clean Right-Aligned Speech Bubble) */}
                       <div className="flex justify-end">
                         <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-zinc-800/90 px-4.5 py-3 text-sm text-zinc-100 border border-zinc-700/50 shadow-sm leading-relaxed">
-                          <p className="whitespace-pre-wrap">{activePrompt}</p>
+                          <p className="whitespace-pre-wrap">{latestTurn.prompt}</p>
                           <div className="mt-1.5 flex items-center justify-end space-x-1.5 text-[10px] text-zinc-400">
                             <Clock className="h-3 w-3" />
                             <span>
@@ -1153,7 +1240,7 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                      ) : selectedTask.output ? (
+                      ) : latestTurn.output ? (
                         <div className="flex items-start space-x-3.5 group">
                           {/* Assistant Avatar */}
                           <div className={`flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700/70 ${theme.iconColor} shrink-0 mt-0.5 shadow-sm`}>
@@ -1241,7 +1328,7 @@ export default function App() {
 
                             {/* Direct Clean Markdown Response */}
                             <div className="text-zinc-100 text-sm sm:text-base leading-relaxed break-words">
-                              <MarkdownRenderer content={selectedTask.output} />
+                              <MarkdownRenderer content={latestTurn.output} />
                             </div>
 
                             {/* Unobtrusive Action Row */}

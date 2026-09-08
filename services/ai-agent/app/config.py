@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: Optional[str] = None
 
     # Database
+    DATABASE_URL: Optional[str] = None
     POSTGRES_DB: str = "ambientdesk_db"
     POSTGRES_USER: str = "ambientdesk_user"
     POSTGRES_PASSWORD: str = "ambientdesk_secret"
@@ -35,6 +36,13 @@ class Settings(BaseSettings):
 
     @property
     def postgres_connection_string(self) -> str:
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+psycopg://", 1)
+            elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg://"):
+                url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+            return url
         # Safely URL-encode credentials
         user = urllib.parse.quote_plus(self.POSTGRES_USER)
         password = urllib.parse.quote_plus(self.POSTGRES_PASSWORD)

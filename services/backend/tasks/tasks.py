@@ -83,7 +83,23 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False, prompt: 
                 task.status = raw_status
 
             task.triage_category = data.get("triage_category")
-            task.output = data.get("output")
+            new_output = data.get("output")
+
+            if human_approved:
+                # When resuming from human approval, replace the paused placeholder on the current turn
+                if task.output and "\n\n[Follow-up]: " in task.output:
+                    parts = task.output.split("\n\n[Follow-up]: ")
+                    parts[-1] = new_output or ""
+                    task.output = "\n\n[Follow-up]: ".join(parts)
+                else:
+                    task.output = new_output
+            else:
+                # If this execution is a follow-up and previous output exists, append it
+                is_followup = bool(prompt) and bool(task.output) and ("[Follow-up]: " in task.prompt)
+                if is_followup:
+                    task.output = f"{task.output}\n\n[Follow-up]: {new_output or ''}"
+                else:
+                    task.output = new_output
 
             raw_prompt = data.get("approval_prompt")
             if isinstance(raw_prompt, dict):
@@ -103,7 +119,7 @@ def run_ai_agent_task(self, task_id: str, human_approved: bool = False, prompt: 
             TaskExecutionLog.objects.create(
                 task=task,
                 node_name="ai_agent_response",
-                message=f"AI Agent finished with status: {task.status}",
+                message=new_output or f"AI Agent finished with status: {task.status}",
                 metadata={"triage_category": task.triage_category, "latency_ms": elapsed_ms},
             )
 
