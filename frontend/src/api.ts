@@ -2,10 +2,15 @@ import axios, { type AxiosError } from "axios";
 import type { AgentTask } from "./types";
 
 const getApiBase = (): string => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  let base = (import.meta.env.VITE_API_URL || "").trim();
+  if (base) {
+    base = base.replace(/\/+$/, "");
+    if (!base.endsWith("/api")) {
+      base = `${base}/api`;
+    }
+    return base;
   }
-  // If running locally in Vite dev mode (port 5173), target Django port 8000
+  // If running locally in Vite dev mode (port 5173), target port 8000
   if (typeof window !== "undefined" && window.location.port === "5173") {
     return "http://localhost:8000/api";
   }

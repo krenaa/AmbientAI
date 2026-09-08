@@ -53,9 +53,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Mount API routes matching contracts
+    # Mount API routes with both /api prefix and root fallback
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     app.include_router(tasks_router, prefix="/api/tasks", tags=["Tasks"])
+    app.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
     app.include_router(ws_router, tags=["WebSockets"])
 
     @app.get("/", tags=["General"])

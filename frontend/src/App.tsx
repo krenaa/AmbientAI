@@ -19,9 +19,9 @@ import { Header } from "./components/layout/Header";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ChatContainer } from "./components/chat/ChatContainer";
 import { ChatInput } from "./components/chat/ChatInput";
+import { AuthScreen } from "./components/auth/AuthScreen";
 
 // Modals
-import { AuthModal } from "./components/modals/AuthModal";
 import { ProfileModal } from "./components/modals/ProfileModal";
 import { HitlModal } from "./components/modals/HitlModal";
 import { DeleteTaskModal } from "./components/modals/DeleteTaskModal";
@@ -57,8 +57,8 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("ambient_session_expired", handleExpiry);
   }, [showToast]);
 
-  // Tasks Data via React Query
-  const { data: tasks = [], isLoading: isLoadingTasks } = useTasksQuery(true);
+  // Tasks Data via React Query (only fetched when authenticated)
+  const { data: tasks = [], isLoading: isLoadingTasks } = useTasksQuery(!!token);
   const createTaskMutation = useCreateTaskMutation();
   const renameTaskMutation = useRenameTaskMutation();
   const deleteTaskMutation = useDeleteTaskMutation();
@@ -81,7 +81,6 @@ export const App: React.FC = () => {
   };
 
   // Modals State
-  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [hitlTask, setHitlTask] = useState<AgentTask | null>(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<AgentTask | null>(null);
@@ -95,7 +94,7 @@ export const App: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!activeTaskId) {
+    if (!activeTaskId || !token) {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -104,10 +103,14 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Determine WS URL
+    // Determine WS URL with sanitization
     let wsBase = "";
     if (import.meta.env.VITE_API_URL) {
-      wsBase = import.meta.env.VITE_API_URL.replace(/^http/, "ws");
+      let url = import.meta.env.VITE_API_URL.trim().replace(/\/+$/, "");
+      if (!url.endsWith("/api")) {
+        url = `${url}/api`;
+      }
+      wsBase = url.replace(/^http/, "ws");
     } else if (typeof window !== "undefined" && window.location.port === "5173") {
       wsBase = "ws://localhost:8000/api";
     } else {
@@ -193,7 +196,7 @@ export const App: React.FC = () => {
     return () => {
       socket.close();
     };
-  }, [activeTaskId, queryClient, showToast]);
+  }, [activeTaskId, token, queryClient, showToast]);
 
   // Auth Handlers
   const handleLogin = async (email: string, pass: string) => {
@@ -313,7 +316,12 @@ export const App: React.FC = () => {
     }
   };
 
-  // Show App splash screen during initial page load
+  // 1. If not authenticated, require Sign In / Sign Up first!
+  if (!token) {
+    return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />;
+  }
+
+  // 2. Show App splash screen during initial task load after authentication
   if (isLoadingTasks && tasks.length === 0) {
     return <AppSplashScreen />;
   }
@@ -345,7 +353,7 @@ export const App: React.FC = () => {
           outputColor={outputColor}
           setOutputColor={handleSetOutputColor}
           onOpenProfile={() => setProfileModalOpen(true)}
-          onOpenAuth={() => setAuthModalOpen(true)}
+          onOpenAuth={() => {}}
           onLogout={handleLogout}
         />
 
@@ -375,13 +383,6 @@ export const App: React.FC = () => {
       </div>
 
       {/* 3. Interactive Modals */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-      />
-
       <ProfileModal
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}
