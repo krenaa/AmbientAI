@@ -172,8 +172,10 @@ async def execute_task_workflow(
 
             triage_cat = graph_result["triage"].category if graph_result.get("triage") else task.triage_category
 
-            # If follow-up execution and previous output exists, append cleanly
-            is_followup = bool(prompt) and bool(task.output) and ("[Follow-up]: " in task.prompt)
+            # Multi-turn output alignment
+            prompt_turns = task.prompt.split("\n\n[Follow-up]: ") if task.prompt else [""]
+            num_prompt_turns = len(prompt_turns)
+
             if human_approved:
                 if task.output and "\n\n[Follow-up]: " in task.output:
                     parts = task.output.split("\n\n[Follow-up]: ")
@@ -181,8 +183,16 @@ async def execute_task_workflow(
                     task.output = "\n\n[Follow-up]: ".join(parts)
                 else:
                     task.output = output_text
-            elif is_followup:
-                task.output = f"{task.output}\n\n[Follow-up]: {output_text or ''}"
+            elif num_prompt_turns > 1:
+                # Multi-turn conversation: ensure 1:1 mapping with prompt turns
+                existing_outputs = task.output.split("\n\n[Follow-up]: ") if task.output else []
+                missing = (num_prompt_turns - 1) - len(existing_outputs)
+                if missing > 0:
+                    prev_msg = task.error_message if task.error_message else "Execution error on this step."
+                    existing_outputs.extend([f"⚠️ *{prev_msg}*"] * missing)
+                
+                existing_outputs.append(output_text or "")
+                task.output = "\n\n[Follow-up]: ".join(existing_outputs)
             else:
                 task.output = output_text
 

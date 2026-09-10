@@ -43,7 +43,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   // Parse multi-turn prompts and outputs
   const promptTurns = task.prompt ? task.prompt.split("\n\n[Follow-up]: ") : [""];
-  const outputTurns = task.output ? task.output.split("\n\n[Follow-up]: ") : [];
+  const rawOutputTurns = task.output ? task.output.split("\n\n[Follow-up]: ") : [];
+
+  // Robust Turn Alignment:
+  // If promptTurns has more items than outputTurns (e.g. an earlier turn previously errored),
+  // pad earlier missing turns so the latest response is always paired with the latest prompt.
+  let outputTurns = [...rawOutputTurns];
+  if (promptTurns.length > outputTurns.length) {
+    const missingCount = promptTurns.length - outputTurns.length;
+    const padding = Array(missingCount).fill(
+      task.error_message ? `⚠️ *Execution Error: ${task.error_message}*` : ""
+    );
+    outputTurns = [...padding, ...outputTurns];
+  }
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto w-full pb-8">
