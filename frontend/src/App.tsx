@@ -420,6 +420,9 @@ export const App: React.FC = () => {
       <KnowledgeModal
         isOpen={knowledgeModalOpen}
         onClose={() => setKnowledgeModalOpen(false)}
+        onSelectDocumentForPrompt={(filename) => {
+          setPromptInput(`According to the uploaded document "${filename}", please explain: `);
+        }}
       />
 
       <HitlModal

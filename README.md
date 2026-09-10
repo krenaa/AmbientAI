@@ -56,13 +56,36 @@ Built on a lightweight, high-speed **FastAPI + LangGraph** async backend and a m
 
 ---
 
-### 3. Live Web Search & Multi-Step Reasoning Trace
+### 3. Knowledge Base & PDF RAG Ingestion
+<div align="center">
+
+![Knowledge Base PDF Ingestion](docs/images/rag_pdf_upload.png)
+
+![Document Indexed Successfully](docs/images/rag_pdf_indexed.png)
+*Upload PDFs, research papers, or documentation into pgvector with automated chunking, embeddings, and document management.*
+
+</div>
+
+---
+
+### 4. pgvector Semantic Search & Document Retrieval
+<div align="center">
+
+![Vector Semantic Search Trace](docs/images/rag_search_trace.png)
+*Test vector similarity search in real-time across indexed documents with source attribution and chunk filtering.*
+
+</div>
+
+---
+
+### 5. Live Web Search & Multi-Step Reasoning Trace
 <div align="center">
 
 ![Live Web Search and Telemetry Trace](docs/images/web_search_trace.png)
 *Step-by-step tool execution trace displaying live web search results, source URLs, and knowledge synthesis.*
 
 </div>
+
 
 ---
 

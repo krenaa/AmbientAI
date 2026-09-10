@@ -7,6 +7,9 @@ from app.agent.vector_store import (
     ingest_pdf,
     get_vector_store,
     extract_text_from_pdf,
+    get_indexed_documents,
+    delete_document_by_source,
+    clear_all_documents,
 )
 
 logger = logging.getLogger("ambientdesk.api.knowledge")
@@ -16,6 +19,7 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str
     k: int = 4
+    source: Optional[str] = None
 
 
 @router.post("/upload")
@@ -57,6 +61,51 @@ async def upload_knowledge_document(
         )
 
 
+@router.get("/documents")
+async def list_knowledge_documents():
+    """Returns the list of all indexed documents in the vector store."""
+    try:
+        docs = get_indexed_documents()
+        return {
+            "status": "success",
+            "count": len(docs),
+            "documents": docs,
+        }
+    except Exception as e:
+        logger.error(f"Error listing documents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+@router.delete("/documents/{filename:path}")
+async def delete_knowledge_document(filename: str):
+    """Deletes a specific document from the knowledge base by filename."""
+    try:
+        deleted = delete_document_by_source(filename)
+        return {
+            "status": "success",
+            "message": f"Successfully deleted '{filename}' ({deleted} chunks removed).",
+            "deleted_chunks": deleted,
+        }
+    except Exception as e:
+        logger.error(f"Error deleting document '{filename}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+
+
+@router.delete("/documents")
+async def clear_knowledge_documents():
+    """Clears all indexed documents from the vector store."""
+    try:
+        deleted = clear_all_documents()
+        return {
+            "status": "success",
+            "message": f"Successfully cleared all knowledge documents ({deleted} chunks removed).",
+            "deleted_chunks": deleted,
+        }
+    except Exception as e:
+        logger.error(f"Error clearing knowledge documents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to clear documents: {str(e)}")
+
+
 @router.post("/query")
 async def query_knowledge_base(payload: QueryRequest):
     """Test queries the pgvector knowledge base directly."""
@@ -65,7 +114,14 @@ async def query_knowledge_base(payload: QueryRequest):
 
     try:
         vector_store = get_vector_store()
-        results = vector_store.similarity_search_with_score(payload.query, k=payload.k)
+        filter_dict = {"source": payload.source} if payload.source else None
+        
+        if filter_dict:
+            results = vector_store.similarity_search_with_score(
+                payload.query, k=payload.k, filter=filter_dict
+            )
+        else:
+            results = vector_store.similarity_search_with_score(payload.query, k=payload.k)
 
         formatted = []
         for doc, score in results:
@@ -105,3 +161,4 @@ async def get_knowledge_status():
             "status": "degraded",
             "error": str(e),
         }
+

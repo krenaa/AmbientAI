@@ -98,6 +98,19 @@ def get_vector_store() -> PGVector:
     )
 
 
+def sanitize_text(text: str) -> str:
+    """Removes NUL (0x00) bytes and invalid control characters for PostgreSQL compatibility."""
+    if not text:
+        return ""
+    # Strip NUL bytes which cause Postgres DataError
+    cleaned = text.replace("\x00", "").replace("\u0000", "")
+    # Preserve standard whitespace (\n, \r, \t) and valid printable characters
+    cleaned = "".join(
+        ch for ch in cleaned if ch in ("\n", "\r", "\t") or (ord(ch) >= 32 and ord(ch) != 127)
+    )
+    return cleaned
+
+
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """Extracts text content from PDF binary bytes using pypdf."""
     try:
@@ -106,45 +119,48 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         extracted_pages = []
         for idx, page in enumerate(reader.pages):
             text = page.extract_text() or ""
-            if text.strip():
-                extracted_pages.append(f"[Page {idx + 1}]\n{text.strip()}")
+            clean_text = sanitize_text(text).strip()
+            if clean_text:
+                extracted_pages.append(f"[Page {idx + 1}]\n{clean_text}")
         return "\n\n".join(extracted_pages)
     except Exception as e:
         logger.error(f"Error parsing PDF file: {e}")
         # Fallback to UTF-8 decoding if plaintext or basic format
         try:
-            return file_bytes.decode("utf-8", errors="ignore")
+            return sanitize_text(file_bytes.decode("utf-8", errors="ignore"))
         except Exception:
             raise ValueError(f"Could not parse document: {str(e)}")
 
 
 def chunk_text(text: str, chunk_size: int = 700, overlap: int = 150) -> List[str]:
     """Splits raw text into overlapping semantic chunks."""
-    if not text or not text.strip():
+    cleaned = sanitize_text(text).strip()
+    if not cleaned:
         return []
 
-    text = text.strip()
-    if len(text) <= chunk_size:
-        return [text]
+    if len(cleaned) <= chunk_size:
+        return [cleaned]
 
     chunks = []
     start = 0
-    while start < len(text):
+    while start < len(cleaned):
         end = start + chunk_size
-        if end >= len(text):
-            chunks.append(text[start:].strip())
+        if end >= len(cleaned):
+            chunk = sanitize_text(cleaned[start:]).strip()
+            if chunk:
+                chunks.append(chunk)
             break
 
         # Find clean boundary (paragraph or sentence break)
-        split_point = text.rfind("\n\n", start, end)
+        split_point = cleaned.rfind("\n\n", start, end)
         if split_point == -1 or split_point <= start:
-            split_point = text.rfind(". ", start, end)
+            split_point = cleaned.rfind(". ", start, end)
         if split_point == -1 or split_point <= start:
-            split_point = text.rfind(" ", start, end)
+            split_point = cleaned.rfind(" ", start, end)
         if split_point == -1 or split_point <= start:
             split_point = end
 
-        chunk = text[start:split_point].strip()
+        chunk = sanitize_text(cleaned[start:split_point]).strip()
         if chunk:
             chunks.append(chunk)
 
@@ -158,7 +174,8 @@ async def ingest_pdf(
     file_bytes: bytes,
     user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Extracts, chunks, embeds, and stores a PDF document in pgvector."""
+    """Extracts, chunks, embeds, and stores a PDF document in pgvector with batched ingestion."""
+    clean_filename = sanitize_text(filename).strip() or "uploaded_document.pdf"
     raw_text = extract_text_from_pdf(file_bytes)
     if not raw_text.strip():
         raise ValueError("No readable text could be extracted from this PDF.")
@@ -170,9 +187,9 @@ async def ingest_pdf(
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     docs = [
         Document(
-            page_content=chunk,
+            page_content=sanitize_text(chunk),
             metadata={
-                "source": filename,
+                "source": clean_filename,
                 "chunk_index": i,
                 "total_chunks": len(chunks),
                 "user_id": user_id or "system",
@@ -183,15 +200,21 @@ async def ingest_pdf(
     ]
 
     vector_store = get_vector_store()
-    vector_store.add_documents(docs)
-    logger.info(f"Successfully ingested {len(docs)} chunks for PDF '{filename}'.")
+    # Batch insertions into chunks of 100 to avoid PostgreSQL parameter limits and high payload spikes
+    batch_size = 100
+    for i in range(0, len(docs), batch_size):
+        batch = docs[i:i + batch_size]
+        vector_store.add_documents(batch)
+
+    logger.info(f"Successfully ingested {len(docs)} chunks for PDF '{clean_filename}'.")
 
     return {
-        "filename": filename,
+        "filename": clean_filename,
         "chunks_count": len(docs),
         "total_characters": len(raw_text),
         "uploaded_at": timestamp,
     }
+
 
 
 async def ingest_documents(texts: List[str], metadatas: Optional[List[dict]] = None):
@@ -201,8 +224,105 @@ async def ingest_documents(texts: List[str], metadatas: Optional[List[dict]] = N
             page_content=text,
             metadata=metadatas[i] if metadatas else {"source": "manual_ingest"},
         )
-        for i, text in enumerate(texts)
+    for i, text in enumerate(texts)
     ]
     vector_store = get_vector_store()
     vector_store.add_documents(docs)
     logger.info(f"Successfully ingested {len(docs)} documents into pgvector.")
+
+
+def _get_raw_connection():
+    conn_info = settings.DATABASE_URL or settings.postgres_connection_string
+    if "postgresql+psycopg://" in conn_info:
+        conn_info = conn_info.replace("postgresql+psycopg://", "postgresql://")
+    return psycopg.connect(conn_info, autocommit=True)
+
+
+def get_indexed_documents() -> List[Dict[str, Any]]:
+    """Returns list of unique documents in vector store with chunk count and upload timestamp."""
+    try:
+        with _get_raw_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'langchain_pg_embedding'
+                    );
+                    """
+                )
+                exists = cur.fetchone()[0]
+                if not exists:
+                    return []
+
+                cur.execute(
+                    """
+                    SELECT 
+                        COALESCE(e.cmetadata->>'source', 'Unknown Document') AS filename,
+                        COUNT(*) AS chunks_count,
+                        MAX(e.cmetadata->>'uploaded_at') AS uploaded_at
+                    FROM langchain_pg_embedding e
+                    JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                    WHERE c.name = %s
+                    GROUP BY e.cmetadata->>'source'
+                    ORDER BY MAX(e.cmetadata->>'uploaded_at') DESC NULLS LAST;
+                    """,
+                    (COLLECTION_NAME,),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "filename": r[0],
+                        "chunks_count": r[1],
+                        "uploaded_at": r[2] or "",
+                    }
+                    for r in rows
+                ]
+    except Exception as e:
+        logger.warning(f"Could not fetch indexed documents: {e}")
+        return []
+
+
+def delete_document_by_source(filename: str) -> int:
+    """Deletes all chunks associated with a specific document source name."""
+    try:
+        with _get_raw_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM langchain_pg_embedding e
+                    USING langchain_pg_collection c
+                    WHERE e.collection_id = c.uuid
+                      AND c.name = %s
+                      AND e.cmetadata->>'source' = %s;
+                    """,
+                    (COLLECTION_NAME, filename),
+                )
+                deleted = cur.rowcount
+                logger.info(f"Deleted {deleted} chunks for document source '{filename}'.")
+                return deleted
+    except Exception as e:
+        logger.error(f"Error deleting document '{filename}': {e}")
+        raise e
+
+
+def clear_all_documents() -> int:
+    """Deletes all document chunks from the pgvector knowledge base."""
+    try:
+        with _get_raw_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM langchain_pg_embedding e
+                    USING langchain_pg_collection c
+                    WHERE e.collection_id = c.uuid
+                      AND c.name = %s;
+                    """,
+                    (COLLECTION_NAME,),
+                )
+                deleted = cur.rowcount
+                logger.info(f"Cleared all {deleted} chunks from knowledge base.")
+                return deleted
+    except Exception as e:
+        logger.error(f"Error clearing knowledge base: {e}")
+        raise e

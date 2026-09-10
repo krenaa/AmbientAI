@@ -164,7 +164,28 @@ export const uploadKnowledgeFile = async (file: File): Promise<any> => {
   return res.data;
 };
 
-export const queryKnowledgeBase = async (query: string, k: number = 4): Promise<any> => {
-  const res = await apiClient.post("/knowledge/query", { query, k });
+export const fetchKnowledgeDocuments = async (): Promise<any> => {
+  const res = await apiClient.get("/knowledge/documents");
   return res.data;
 };
+
+export const deleteKnowledgeDocument = async (filename: string): Promise<any> => {
+  const res = await apiClient.delete(`/knowledge/documents/${encodeURIComponent(filename)}`);
+  return res.data;
+};
+
+export const clearKnowledgeDocuments = async (): Promise<any> => {
+  const res = await apiClient.delete("/knowledge/documents");
+  return res.data;
+};
+
+export const queryKnowledgeBase = async (
+  query: string,
+  k: number = 4,
+  source?: string
+): Promise<any> => {
+  const payload: { query: string; k: number; source?: string } = { query, k };
+  if (source) payload.source = source;
+  const res = await apiClient.post("/knowledge/query", payload);
+  return res.data;
+};
