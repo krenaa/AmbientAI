@@ -1,11 +1,11 @@
-import React from "react";
 import {
   Menu,
   Palette,
   CheckCircle2,
   User as UserIcon,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  Database,
 } from "lucide-react";
 import type { AgentTask, UserProfile } from "../../types";
 import { CategoryIcon } from "../common/CategoryIcon";
@@ -20,6 +20,7 @@ interface HeaderProps {
   user: UserProfile | null;
   outputColor: string;
   setOutputColor: (color: string) => void;
+  onOpenKnowledge: () => void;
   onOpenProfile: () => void;
   onOpenAuth: () => void;
   onLogout: () => void;
@@ -32,6 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   outputColor,
   setOutputColor,
+  onOpenKnowledge,
   onOpenProfile,
   onOpenAuth,
   onLogout,
@@ -72,6 +74,16 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2.5">
+        {/* Knowledge Base / PDF RAG Button */}
+        <button
+          onClick={onOpenKnowledge}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-purple-500/40 text-zinc-300 hover:text-purple-300 text-xs font-medium transition-all cursor-pointer shadow-sm group"
+          title="Upload PDFs & Manage Knowledge Base"
+        >
+          <Database className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+          <span className="hidden sm:inline text-[11px]">Knowledge RAG</span>
+        </button>
+
         {/* Output Accent Palette Selector */}
         <div className="hidden sm:block relative group">
           <button

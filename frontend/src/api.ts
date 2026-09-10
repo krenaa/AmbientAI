@@ -152,3 +152,19 @@ export const renameTask = async (
 export const deleteTask = async (taskId: string): Promise<void> => {
   await apiClient.delete(`/tasks/${taskId}/`);
 };
+
+export const uploadKnowledgeFile = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiClient.post("/knowledge/upload", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return res.data;
+};
+
+export const queryKnowledgeBase = async (query: string, k: number = 4): Promise<any> => {
+  const res = await apiClient.post("/knowledge/query", { query, k });
+  return res.data;
+};

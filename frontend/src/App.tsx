@@ -25,6 +25,7 @@ import { AuthScreen } from "./components/auth/AuthScreen";
 import { ProfileModal } from "./components/modals/ProfileModal";
 import { HitlModal } from "./components/modals/HitlModal";
 import { DeleteTaskModal } from "./components/modals/DeleteTaskModal";
+import { KnowledgeModal } from "./components/modals/KnowledgeModal";
 
 export const App: React.FC = () => {
   const queryClient = useQueryClient();
@@ -82,6 +83,7 @@ export const App: React.FC = () => {
 
   // Modals State
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [hitlTask, setHitlTask] = useState<AgentTask | null>(null);
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<AgentTask | null>(null);
 
@@ -352,6 +354,7 @@ export const App: React.FC = () => {
           user={user}
           outputColor={outputColor}
           setOutputColor={handleSetOutputColor}
+          onOpenKnowledge={() => setKnowledgeModalOpen(true)}
           onOpenProfile={() => setProfileModalOpen(true)}
           onOpenAuth={() => {}}
           onLogout={handleLogout}
@@ -411,6 +414,11 @@ export const App: React.FC = () => {
           sessionStorage.setItem("ambient_user", JSON.stringify(updated));
           queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
         }}
+      />
+
+      <KnowledgeModal
+        isOpen={knowledgeModalOpen}
+        onClose={() => setKnowledgeModalOpen(false)}
       />
 
       <HitlModal

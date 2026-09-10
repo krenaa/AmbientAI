@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.auth import router as auth_router
 from app.api.tasks import router as tasks_router
 from app.api.websockets import router as ws_router
+from app.api.knowledge import router as knowledge_router
 from app.config import get_settings
 from app.core.database import Base, engine
 
@@ -58,6 +59,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     app.include_router(tasks_router, prefix="/api/tasks", tags=["Tasks"])
     app.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
+    app.include_router(knowledge_router, prefix="/api/knowledge", tags=["Knowledge Base"])
+    app.include_router(knowledge_router, prefix="/knowledge", tags=["Knowledge Base"])
     app.include_router(ws_router, tags=["WebSockets"])
 
     @app.get("/", tags=["General"])
