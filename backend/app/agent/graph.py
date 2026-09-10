@@ -121,9 +121,18 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
         )
 
     messages = [SystemMessage(content=system_instruction)] + state["messages"]
-    response = await llm_with_tools.ainvoke(messages)
-
-    return {"messages": [response]}
+    try:
+        response = await llm_with_tools.ainvoke(messages)
+        return {"messages": [response]}
+    except Exception as e:
+        logger.warning(f"Resilient LLM with tools failed: {e}. Attempting direct response fallback...")
+        try:
+            simple_llm = get_resilient_llm(temperature=0.2)
+            response = await simple_llm.ainvoke(messages)
+            return {"messages": [response]}
+        except Exception as inner_e:
+            logger.error(f"All LLM model candidates exhausted: {inner_e}")
+            raise e
 
 
 def route_after_triage(state: AgentState) -> Literal["approval", "agent"]:

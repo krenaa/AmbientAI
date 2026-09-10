@@ -8,66 +8,149 @@ from app.config import get_settings
 logger = logging.getLogger("ambientdesk.llm")
 settings = get_settings()
 
+# Curated list of high-performance Groq models with function calling & chat capabilities
+GROQ_FALLBACK_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "deepseek-r1-distill-llama-70b",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768",
+]
 
-def get_primary_llm(temperature: float = 0.2) -> Optional[BaseChatModel]:
-    """Returns Groq Chat Model if API key is configured."""
-    if settings.GROQ_API_KEY:
-        return ChatGroq(
-            model=settings.GROQ_MODEL,
-            api_key=settings.GROQ_API_KEY,
-            temperature=temperature,
-            max_retries=1,
-        )
-    return None
+# Curated list of Google Gemini models
+GEMINI_FALLBACK_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-pro",
+]
 
 
-def get_fallback_llm(temperature: float = 0.2) -> Optional[BaseChatModel]:
-    """Returns Google Gemini Chat Model if API key is configured."""
-    if settings.GOOGLE_API_KEY:
-        return ChatGoogleGenerativeAI(
-            model=settings.GOOGLE_MODEL,
-            google_api_key=settings.GOOGLE_API_KEY,
-            temperature=temperature,
-            max_retries=2,
-        )
-    return None
+def _extract_keys(single_key: Optional[str], multi_keys: Optional[str]) -> List[str]:
+    """Helper to extract a unique, non-empty list of API keys."""
+    keys: List[str] = []
+    if single_key and single_key.strip():
+        keys.append(single_key.strip())
+    if multi_keys:
+        for k in multi_keys.replace(";", ",").split(","):
+            k_clean = k.strip()
+            if k_clean and k_clean not in keys:
+                keys.append(k_clean)
+    return keys
+
+
+def get_candidate_models(temperature: float = 0.2) -> List[BaseChatModel]:
+    """Generates an ordered list of LLM instances across all available providers and models."""
+    candidates: List[BaseChatModel] = []
+
+    # 1. Groq Candidates
+    groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
+    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL else []
+    for model_name in GROQ_FALLBACK_MODELS:
+        if model_name not in groq_models:
+            groq_models.append(model_name)
+
+    for api_key in groq_keys:
+        for model_name in groq_models:
+            try:
+                llm = ChatGroq(
+                    model=model_name,
+                    api_key=api_key,
+                    temperature=temperature,
+                    max_retries=1,
+                    request_timeout=30.0,
+                )
+                candidates.append(llm)
+            except Exception as e:
+                logger.debug(f"Could not initialize ChatGroq({model_name}): {e}")
+
+    # 2. Google Gemini Candidates
+    google_keys = _extract_keys(settings.GOOGLE_API_KEY, settings.GOOGLE_API_KEYS)
+    google_models = [settings.GOOGLE_MODEL] if settings.GOOGLE_MODEL else []
+    for model_name in GEMINI_FALLBACK_MODELS:
+        if model_name not in google_models:
+            google_models.append(model_name)
+
+    for api_key in google_keys:
+        for model_name in google_models:
+            try:
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=api_key,
+                    temperature=temperature,
+                    max_retries=1,
+                    request_timeout=30.0,
+                )
+                candidates.append(llm)
+            except Exception as e:
+                logger.debug(f"Could not initialize ChatGoogleGenerativeAI({model_name}): {e}")
+
+    # 3. Optional OpenAI Candidates
+    if settings.OPENAI_API_KEY:
+        try:
+            from langchain_openai import ChatOpenAI
+            openai_models = [settings.OPENAI_MODEL, "gpt-4o-mini", "gpt-4o"]
+            seen_openai = set()
+            for model_name in openai_models:
+                if model_name and model_name not in seen_openai:
+                    seen_openai.add(model_name)
+                    llm = ChatOpenAI(
+                        model=model_name,
+                        api_key=settings.OPENAI_API_KEY,
+                        temperature=temperature,
+                        max_retries=1,
+                    )
+                    candidates.append(llm)
+        except ImportError:
+            logger.debug("langchain_openai not installed; skipping OpenAI fallback.")
+        except Exception as e:
+            logger.debug(f"Could not initialize ChatOpenAI: {e}")
+
+    return candidates
 
 
 def get_resilient_llm(
     temperature: float = 0.2,
     tools: Optional[List[Any]] = None,
     structured_schema: Optional[Any] = None,
-) -> BaseChatModel:
-    """Builds a primary LLM with automatic fallback to Gemini.
+) -> Any:
+    """Builds a multi-model, multi-provider resilient LLM chain with automatic cascading fallbacks.
 
-    Handles structured output or tool bindings across both providers.
+    If any model fails (due to 404, 429 rate limit, 503 overload, or context limit),
+    the execution seamlessly cascades down the chain of alternate models and keys.
     """
-    primary = get_primary_llm(temperature)
-    fallback = get_fallback_llm(temperature)
+    raw_candidates = get_candidate_models(temperature)
 
-    if not primary and not fallback:
+    if not raw_candidates:
         raise ValueError(
-            "No LLM provider keys configured. Please set GROQ_API_KEY or GOOGLE_API_KEY in .env"
+            "No LLM provider keys configured. Please set GROQ_API_KEY, GOOGLE_API_KEY, or OPENAI_API_KEY in .env"
         )
 
-    # Bind tools or structured output to primary
-    if primary:
-        if structured_schema:
-            primary = primary.with_structured_output(structured_schema)
-        elif tools:
-            primary = primary.bind_tools(tools)
+    bound_candidates: List[Any] = []
+    for candidate in raw_candidates:
+        try:
+            if structured_schema:
+                bound = candidate.with_structured_output(structured_schema)
+            elif tools:
+                bound = candidate.bind_tools(tools)
+            else:
+                bound = candidate
+            bound_candidates.append(bound)
+        except Exception as e:
+            logger.warning(
+                f"Could not bind tools/schema to model {getattr(candidate, 'model_name', candidate)}: {e}"
+            )
 
-    # Bind tools or structured output to fallback
-    if fallback:
-        if structured_schema:
-            fallback = fallback.with_structured_output(structured_schema)
-        elif tools:
-            fallback = fallback.bind_tools(tools)
+    if not bound_candidates:
+        bound_candidates = raw_candidates
 
-    # Return resilient chain with fallback
-    if primary and fallback:
-        return primary.with_fallbacks([fallback])
-    elif primary:
-        return primary
-    else:
-        return fallback
+    primary = bound_candidates[0]
+    fallbacks = bound_candidates[1:]
+
+    if fallbacks:
+        logger.info(
+            f"Initialized Resilient LLM with {len(bound_candidates)} fallback models across configured providers."
+        )
+        return primary.with_fallbacks(fallbacks)
+    return primary

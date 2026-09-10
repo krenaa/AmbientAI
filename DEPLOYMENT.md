@@ -6,8 +6,8 @@ This guide provides step-by-step instructions to deploy **AmbientDesk AI** compl
 ---
 
 ## Architecture Overview
-* **Backend**: `backend/` directory ➔ Hosted on **Render** (Free Web Service)
-* **Frontend**: `frontend/` directory ➔ Hosted on **Vercel** (Free Tier)
+* **Frontend**: React 19 + TypeScript + Vite ➔ Hosted on **Vercel** (Free Tier)
+* **Backend**: FastAPI + LangGraph + WebSockets ➔ Hosted on **Render** (Free Web Service)
 * **Database**: PostgreSQL with `pgvector` ➔ Hosted on **Neon** or **Supabase** (Free Tier)
 
 ---
@@ -25,24 +25,24 @@ This guide provides step-by-step instructions to deploy **AmbientDesk AI** compl
 
 ---
 
-## Step 2: Backend Deployment on Render (`backend/` folder) — 100% Free
+## Step 2: Backend Deployment on Render — 100% Free
 
 1. Go to [render.com](https://render.com) and sign in.
 2. Click **New +** ➔ **Web Service**.
 3. Connect your GitHub repository (`ambientdesk-ai`).
 4. Configure the Web Service settings:
    - **Name**: `ambientdesk-backend`
-   - **Region**: Same region as your database (e.g. `Ohio (US East)` or `Frankfurt`)
+   - **Region**: Same region as your database (e.g. `Ohio (US East)` / `Frankfurt`)
    - **Branch**: `main`
-   - **Root Directory**: `backend`
+   - **Root Directory**: Leave blank (or `backend` if deploying only backend subfolder)
    - **Runtime**: `Python 3`
    - **Build Command**:
      ```bash
-     pip install -r requirements.txt
+     pip install -r backend/requirements.txt
      ```
    - **Start Command**:
      ```bash
-     python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+     python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
      ```
    - **Instance Type**: `Free`
 
@@ -72,13 +72,13 @@ python backend/create_admin.py --email admin@ambientdesk.ai --password "YourStro
 
 ---
 
-## Step 4: Frontend Deployment on Vercel (`frontend/` folder) — 100% Free
+## Step 4: Frontend Deployment on Vercel — 100% Free
 
 1. Go to [vercel.com](https://vercel.com) and sign in.
 2. Click **Add New...** ➔ **Project** and import your `ambientdesk-ai` repository.
 3. Configure the project settings:
    - **Framework Preset**: `Vite`
-   - **Root Directory**: `frontend` *(Click Edit and select `frontend`)*
+   - **Root Directory**: `frontend` *(Click Edit and select the `frontend` folder)*
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
    - **Install Command**: `npm install`
@@ -92,14 +92,14 @@ python backend/create_admin.py --email admin@ambientdesk.ai --password "YourStro
 ## Step 5: Verify Live Deployment
 
 1. Visit your Vercel URL (e.g. `https://ambientdesk.vercel.app`).
-2. Log in with your admin credentials (`admin@admin.com` or `admin@ambientdesk.ai`).
+2. Log in with your admin credentials (`admin@ambientdesk.ai`).
 3. Verify that the WebSocket indicator displays **Live Neural Stream**.
-4. Run an agent prompt (e.g. `"Search the live web for latest AI news"`).
+4. Run a test agent session (e.g. `"Search the web for latest AI news"`).
 
 ---
 
 ## Troubleshooting & Tips
 
 * **Render Free Tier Spin-Down**: Free instances on Render spin down after 15 minutes of inactivity. The first request after spin-down may take ~30 seconds to wake up.
-* **CORS Settings**: Ensure your Render `ALLOWED_ORIGINS` includes your Vercel URL (e.g. `https://ambientdesk.vercel.app`) or `*`.
-* **Single Page App (SPA) Routing**: Vercel SPA rewrites are already configured in `frontend/vercel.json`.
+* **CORS Errors**: If you get a CORS error in the browser console, ensure your Render `ALLOWED_ORIGINS` environment variable includes your exact Vercel domain (e.g. `https://ambientdesk.vercel.app`) or `*`.
+* **Single Page App (SPA) Routing**: Vercel routing is already pre-configured in `frontend/vercel.json`.

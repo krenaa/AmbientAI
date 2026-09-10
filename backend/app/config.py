@@ -79,9 +79,13 @@ class Settings(BaseSettings):
 
     # LLM Providers & Core Orchestration
     GROQ_API_KEY: Optional[str] = None
+    GROQ_API_KEYS: Optional[str] = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEYS: Optional[str] = None
     GOOGLE_MODEL: str = "gemini-2.0-flash"
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
     TAVILY_API_KEY: Optional[str] = None
 
     # Observability
