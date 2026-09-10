@@ -376,7 +376,25 @@ export const App: React.FC = () => {
             onSubmit={() => handleSubmitPrompt()}
             isProcessing={isExecuting}
             onStop={() => {
-              showToast("Execution cancellation requested.", "info");
+              if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+              }
+              setWsConnected(false);
+              if (activeTaskId) {
+                queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
+                  old.map((t) =>
+                    t.id === activeTaskId
+                      ? {
+                          ...t,
+                          status: "completed",
+                          output: t.output || "Execution stopped by user.",
+                        }
+                      : t
+                  )
+                );
+              }
+              showToast("Execution stopped by user.", "info");
             }}
           />
         </main>
