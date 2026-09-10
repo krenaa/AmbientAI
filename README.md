@@ -4,7 +4,7 @@
 
 ![AmbientDesk AI Banner](docs/images/banner.jpg)
 
-### **Production-Grade Autonomous Multi-Agent Workspace with Human-in-the-Loop (HITL) Guardrails & Real-Time Streaming**
+### **Multi-Agent AI Workspace with Human-in-the-Loop (HITL) Guardrails & Real-Time Streaming**
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -20,24 +20,47 @@
 
 ---
 
-## 📌 Executive Overview
+## 📌 Overview
 
-**AmbientDesk AI** is an enterprise-grade agentic operating system designed to triage, orchestrate, and execute complex workflows autonomously while maintaining strict **Human-in-the-Loop (HITL)** governance and state persistence.
+**AmbientDesk AI** is an intelligent agent workspace built to route, research, and execute complex multi-step tasks while keeping humans in control with **Human-in-the-Loop (HITL)** approvals.
 
-Powered by a lightweight, high-performance **Pure FastAPI + LangGraph** async backend and a modern **React 19 + Vite** interface:
-1. **Intelligent Triage & Intent Routing**: Directs prompts to deterministic computation, web intelligence, internal vector search (`pgvector`), or sensitive execution pipelines.
-2. **LangGraph State Machine with `interrupt()`**: Halts execution before state-changing side effects (SMTP email, alerts, mutations) for explicit human authorization.
-3. **Resilient Dual-Model LLM Routing**: Primary ultra-fast inference via **Groq (Llama 3.3 70B)** with automated fallback to **Google Gemini 2.0 Flash**.
-4. **Native Async WebSockets**: Direct full-duplex WebSocket streaming for real-time node transitions, tool execution logs, and LLM tokens.
+Built on a lightweight, high-speed **FastAPI + LangGraph** async backend and a modern **React 19 + TypeScript** interface:
+1. **Smart Intent Routing**: Automatically classifies queries into direct answers, live web research, internal database search (`pgvector`), or sensitive operations.
+2. **Human-in-the-Loop (HITL) Guardrails**: Automatically pauses before sensitive side-effects (sending emails, alerts, or state modifications) to request explicit human authorization.
+3. **Resilient Multi-Model Fallbacks**: Chained inference using **Groq** (`llama-3.1-8b-instant`) with automatic fallback to **Google Gemini** (`gemini-2.5-flash`, `gemini-3.6-flash`).
+4. **Real-Time Streaming**: Native WebSockets stream reasoning steps, tool telemetry, and tokens directly to the UI.
 
 ---
 
-## 📸 System Visuals & UI Walkthrough
+## 📸 Application Interface & Visual Walkthrough
 
+### 1. Interactive Workspace & Session Dashboard
 <div align="center">
 
-![AmbientDesk AI Workflow & HITL Interface](docs/images/workflow_preview.jpg)
-*Real-time LangGraph multi-agent execution pipeline with Human-in-the-Loop (HITL) approval modal, pgvector RAG status, and live tool telemetry.*
+![Interactive Workspace Home Screen](docs/images/home_screen.png)
+*Clean modern chat interface with real-time streaming, conversation history, and dynamic intent badges.*
+
+</div>
+
+---
+
+### 2. Human-in-the-Loop (HITL) Security Guardrails
+<div align="center">
+
+![Human in the Loop Approval Card](docs/images/hitl.png)
+
+![Human in the Loop Approval Popup Dialog](docs/images/hitl_popup.png)
+*When sensitive operations (like sending notifications or modifying records) are triggered, the engine pauses and requests human review before proceeding.*
+
+</div>
+
+---
+
+### 3. Live Web Search & Multi-Step Reasoning Trace
+<div align="center">
+
+![Live Web Search and Telemetry Trace](docs/images/web_search_trace.png)
+*Step-by-step tool execution trace displaying live web search results, source URLs, and knowledge synthesis.*
 
 </div>
 
@@ -47,13 +70,13 @@ Powered by a lightweight, high-performance **Pure FastAPI + LangGraph** async ba
 
 | Capability | Technical Implementation | Benefit |
 | :--- | :--- | :--- |
-| **Multi-Agent State Graph** | LangGraph `StateGraph` + `MemorySaver` checkpointer | Stateful multi-turn reasoning with conversational memory and interruptible execution |
-| **Human-In-The-Loop (HITL)** | Native LangGraph `interrupt()` + FastAPI approval endpoint | Prevents unauthorized emails, webhook dispatches, and data modifications |
-| **Resilient Model Routing** | Fallback chaining: Groq Llama 3.3 70B ➔ Gemini 2.0 Flash | 99.9% uptime against LLM rate limits and API outages |
-| **pgvector Semantic RAG** | PostgreSQL `pgvector` extension + LangChain VectorStore | Single database for relational data and document embeddings |
+| **Stateful Multi-Agent Graph** | LangGraph `StateGraph` + `MemorySaver` checkpointer | Multi-turn reasoning with conversational memory and pause/resume execution |
+| **Human-In-The-Loop (HITL)** | LangGraph `interrupt()` + FastAPI approval endpoint | Halts sensitive operations until confirmed by the user |
+| **Resilient Model Routing** | Fallback chaining: Groq Llama ➔ Google Gemini 2.5 / 3.6 | Zero downtime against LLM rate limits or API outages |
+| **pgvector Semantic RAG** | PostgreSQL `pgvector` extension + LangChain VectorStore | High-speed semantic search on internal documentation |
 | **Live Web Intelligence** | Tavily Search API with automated content cleaning | Real-time factual queries with citations and source URL attribution |
-| **Defensive Tool Guardrails** | RFC-compliant Regex email validation + AST Math parser | Eliminates malformed inputs, unsafe `eval()`, and prompt injection edge-cases |
-| **Live Telemetry & Logs** | Native FastAPI WebSockets (`/ws/tasks/{id}/`) | Sub-second step-by-step UI updates showing which tool or node is actively running |
+| **Defensive Tool Guardrails** | Regex email validation + AST Math parser | Eliminates malformed inputs, unsafe `eval()`, and prompt injection risks |
+| **Live Telemetry & Logs** | Native FastAPI WebSockets (`/ws/tasks/{id}/`) | Sub-second step-by-step UI updates showing which tool is actively running |
 
 ---
 
@@ -85,8 +108,8 @@ flowchart TB
     end
 
     subgraph ExternalLLM ["Resilient Model Routing"]
-        Groq["Groq (Llama-3.3-70b-versatile)"]
-        Gemini["Google Gemini (gemini-2.0-flash)"]
+        Groq["Groq (Llama-3.1-8b-instant)"]
+        Gemini["Google Gemini (gemini-2.5-flash)"]
     end
 
     subgraph DataBroker ["Storage & Persistence"]
@@ -108,17 +131,9 @@ flowchart TB
     ToolSuite --> Postgres
 ```
 
-    StateGraph --> ToolSuite
-    StateGraph --> ExternalLLM
-    ExternalLLM --> Groq
-    Groq -. Fallback .-> Gemini
-
-    ToolSuite --> Postgres
-```
-
 ---
 
-## 🔄 LangGraph State Machine Execution Flow
+## 🔄 Execution Flow
 
 ```mermaid
 stateDiagram-v2
@@ -129,7 +144,7 @@ stateDiagram-v2
         ClassifyIntent --> DirectAnswer: Read-only query / chit-chat
         ClassifyIntent --> Research: Needs web / RAG facts
         ClassifyIntent --> MathCalc: Needs deterministic evaluation
-        ClassifyIntent --> SensitiveAction: State-changing side effect (Email / Webhook)
+        ClassifyIntent --> SensitiveAction: State-changing action (Email / Alert)
     }
 
     TriageNode --> ApprovalNode: If is_sensitive == True
@@ -157,50 +172,50 @@ stateDiagram-v2
 
 ## 🎯 Showcase Prompts to Test the System
 
-Use these curated prompts in the interface to test and demonstrate each layer of AmbientDesk AI:
+Use these prompts in the interface to test and demonstrate AmbientDesk AI:
 
-### 1. 🔗 Multi-Step Chained Workflow (Research ➔ Synthesize ➔ Email)
+### 1. 🛡️ Human-In-The-Loop (HITL) Guardrail & Approval
 > **Prompt:**
 > ```text
-> Search the web for the top 3 zero-trust security best practices for AI agent deployments in 2026, synthesize an executive summary with cited sources, and email the brief to dev-lead@ambientdesk.ai
+> Send an email notification to operations@ambientdesk.ai with subject 'Quarterly Infrastructure Audit' and body 'All cloud security policies and access controls verified successfully.'
 > ```
-> * **What it demonstrates:** Dynamic tool chaining (`web_search` ➔ LLM synthesis ➔ `send_email`), conversational multi-step fulfillment, and defensive email recipient validation.
+> * **What it demonstrates:** Classifies state-changing actions, triggers LangGraph `interrupt()`, renders the interactive approval modal, and pauses execution until approved by the user.
 
 ---
 
-### 2. 🛡️ Human-In-The-Loop (HITL) Guardrail & Interruption
+### 2. 🌐 Live Web Search & Multi-Source Research
 > **Prompt:**
 > ```text
-> Send an external notification to devops-alerts@ambientdesk.ai with subject 'Critical Database Migration Alert' informing the infrastructure team of scheduled downtime at 02:00 UTC.
+> Search the live web for: 3 latest breakthroughs in AI agents and summarize them.
 > ```
-> * **What it demonstrates:** Intent classification identifies state-changing side-effects, invokes LangGraph `interrupt()`, renders the glowing approval modal on the frontend, and pauses execution until approved by human.
+> * **What it demonstrates:** Dynamic tool execution (`web_search`), live article parsing, source citation links, and real-time step telemetry.
 
 ---
 
-### 3. 🚨 Defensive Guardrails & Malformed Input Handling
+### 3. 📂 Enterprise Knowledge Retrieval (pgvector RAG)
 > **Prompt:**
 > ```text
-> Send the quarterly financial performance metrics report to fenil@#gmail.com immediately.
+> What is our company policy on expense reimbursements and travel allowances?
 > ```
-> * **What it demonstrates:** RFC-compliant regex defensive validator intercepts the illegal `#` character in the domain, prevents faulty network calls, and politely guides the user to confirm the valid address.
+> * **What it demonstrates:** Queries PostgreSQL `pgvector` similarity search to extract relevant internal policy clauses.
 
 ---
 
-### 4. 📂 Enterprise Inbox Triage & RAG Cross-Referencing
+### 4. 🚨 Defensive Email Validation Guardrail
 > **Prompt:**
 > ```text
-> Check recent incoming emails for client inquiries regarding our RAG SLA terms, then search our pgvector knowledge base to draft a compliant response with citations.
+> Send the quarterly performance metrics report to team@#invalid_domain.com immediately.
 > ```
-> * **What it demonstrates:** `fetch_recent_emails` reads simulated/live enterprise communications ➔ triggers `knowledge_base_retrieval` against `pgvector` ➔ outputs contextual reply.
+> * **What it demonstrates:** RFC-compliant regex validator detects invalid email formats, prevents faulty network calls, and asks for clarification.
 
 ---
 
 ### 5. 🧮 Deterministic AST Math Calculation
 > **Prompt:**
 > ```text
-> Calculate our projected cloud infrastructure burn rate: 450000 / 18 months with an 8.5% annual inflation buffer, and compare with sqrt(144000000).
+> Calculate compound growth for principal $20,000 at 7.5% annual rate over 5 years using formula 20000 * (1 + 0.075)**5
 > ```
-> * **What it demonstrates:** Eliminates LLM numerical hallucinations by delegating formulas to a sandboxed Python Abstract Syntax Tree (`ast.parse`) math evaluator.
+> * **What it demonstrates:** Eliminates LLM calculation errors by delegating formulas to a safe Python Abstract Syntax Tree (`ast.parse`) math evaluator.
 
 ---
 
@@ -215,15 +230,15 @@ Use these curated prompts in the interface to test and demonstrate each layer of
 
 ### 1. Clone & Configure Environment
 ```bash
-git clone https://github.com/your-username/ambientdesk-ai.git
-cd ambientdesk-ai
+git clone https://github.com/krenaa/AmbientAI.git
+cd AmbientAI
 cp .env.example .env
 ```
 Edit `.env` with your API keys and PostgreSQL connection string.
 
 ---
 
-### 2. Run the Unified FastAPI Backend
+### 2. Run the FastAPI Backend
 ```bash
 cd backend
 python -m venv .venv
@@ -236,8 +251,7 @@ python -m venv .venv
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
-*The FastAPI backend will automatically verify and initialize database tables and the `pgvector` extension upon startup at `http://localhost:8000`.*
-*(You can also run `python run_backend.py` directly from the workspace root).*
+*The FastAPI backend will automatically verify and initialize database tables and the `pgvector` extension at `http://localhost:8000`.*
 
 ---
 
@@ -252,26 +266,17 @@ Open **`http://localhost:5173`** in your browser!
 
 ---
 
-## 📡 API & WebSocket Protocols
+## 📡 API Endpoints
 
-### REST Endpoints
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :---: |
 | `POST` | `/api/auth/register` | Register new user account | No |
-| `POST` | `/api/auth/login` | Authenticate and obtain JWT access/refresh token | No |
-| `GET` | `/api/auth/me` | Fetch authenticated user profile and stats | Yes |
+| `POST` | `/api/auth/login` | Authenticate and obtain JWT token | No |
+| `GET` | `/api/auth/me` | Fetch authenticated user profile | Yes |
 | `GET` | `/api/tasks` | List all user tasks with status | Yes |
 | `POST` | `/api/tasks/create` | Dispatch a new task to LangGraph | Yes |
 | `POST` | `/api/tasks/{id}/approve` | Approve or reject a paused HITL action | Yes |
 | `GET` | `/api/health` | Service health check | No |
-
-### WebSocket Real-Time Stream
-- **URL:** `ws://localhost:8000/ws/tasks/{task_id}/`
-- **Events Broadcasted:**
-  - `node_transition`: Emits `{ "node": "triage" | "approval" | "agent" | "tools" }`
-  - `token_stream`: Real-time streaming tokens generated by the LLM
-  - `hitl_requested`: Emitted when an action requires human approval
-  - `task_completed`: Final output payload and execution timing metrics
 
 ---
 
@@ -279,12 +284,13 @@ Open **`http://localhost:5173`** in your browser!
 
 ```text
 ambientdesk-ai/
-├── docs/                              # Architecture previews & diagrams
+├── docs/                              # Screenshots & architecture previews
+│   └── images/                        # UI screenshots (home_screen, hitl, etc.)
 ├── backend/                           # Unified FastAPI Backend
 │   ├── app/
 │   │   ├── agent/                     # LangGraph Multi-Agent Engine
 │   │   │   ├── graph.py               # StateGraph & Node Definitions
-│   │   │   ├── llm.py                 # Groq & Gemini Resilient Fallback Factory
+│   │   │   ├── llm.py                 # Multi-Model Resilient Fallback Factory
 │   │   │   ├── state.py               # AgentState & Pydantic Schemas
 │   │   │   ├── tools.py               # Tavily, pgvector RAG, AST Math, Email Tools
 │   │   │   └── vector_store.py        # pgvector Embeddings & Search
@@ -313,15 +319,6 @@ ambientdesk-ai/
 ├── DEPLOYMENT.md                      # Production Deployment Guide
 └── README.md                          # Project Documentation
 ```
-
----
-
-## 🛡️ Security & Enterprise Governance
-
-- **Zero-Trust Tool Execution**: Tools that execute state mutations are barred from silent execution; LangGraph explicitly pauses for user confirmation.
-- **Safe Evaluation**: Code execution and math expressions are parsed via AST validation without ever invoking Python's dangerous `eval()`.
-- **Sanitized Prompts & Inputs**: Web search snippets and retrieved documents are cleansed of raw markdown artifacts and delimiter injection threats.
-- **Service-to-Service Isolation**: The AI Agent FastAPI service communicates with Django backend using internal token verification (`AI_AGENT_INTERNAL_TOKEN`).
 
 ---
 
