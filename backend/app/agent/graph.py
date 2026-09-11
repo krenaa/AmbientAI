@@ -25,8 +25,24 @@ CRITICAL RULES:
 2. ONLY real state-changing actions (e.g., actually transferring funds, executing financial payouts, sending emails via send_email or send_external_notification, or deleting records) should be classified as `sensitive_action` with `is_sensitive=True`."""
 
 
+SENSITIVE_KEYWORD_TRIGGERS = [
+    "sensitive",
+    "transfer",
+    "payout",
+    "disbursement",
+    "disburse",
+    "wire fund",
+    "send payment",
+    "send money",
+    "delete database",
+    "delete record",
+    "drop table",
+    "wipe data",
+]
+
+
 async def triage_node(state: AgentState) -> Dict[str, Any]:
-    """Classifies user request and checks for sensitive actions with automatic failover."""
+    """Classifies user request and checks for sensitive actions with deterministic guardrails and LLM failover."""
     selected_model = state.get("selected_model")
 
     user_messages = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
@@ -39,6 +55,25 @@ async def triage_node(state: AgentState) -> Dict[str, Any]:
     else:
         latest_query = str(raw_content)
 
+    q_lower = latest_query.lower()
+    is_read_only = any(term in q_lower for term in ["policy", "guideline", "how to", "what is", "explain", "rules"])
+    is_explicitly_sensitive = any(kw in q_lower for kw in SENSITIVE_KEYWORD_TRIGGERS) and not is_read_only
+
+    # 1. Deterministic Fast-Path Guardrail
+    if is_explicitly_sensitive:
+        logger.info(f"Deterministic HITL guardrail triggered for query: '{latest_query}'")
+        triage_result = TriageOutput(
+            category="sensitive_action",
+            requires_tools=True,
+            is_sensitive=True,
+            summary=f"Sensitive Action: {latest_query[:140]}",
+        )
+        return {
+            "triage": triage_result,
+            "requires_approval": True,
+        }
+
+    # 2. LLM-Assisted Triage
     messages = [
         SystemMessage(content=TRIAGE_SYSTEM_PROMPT),
         HumanMessage(content=f"Task input: {latest_query}"),
@@ -57,11 +92,12 @@ async def triage_node(state: AgentState) -> Dict[str, Any]:
             "requires_approval": is_sensitive,
         }
     except Exception as e:
-        logger.warning(f"Structured triage failed across all models, using fallback: {e}")
+        logger.warning(f"Structured triage fallback: {e}")
+        category = "research" if any(k in q_lower for k in ["search", "web", "find", "who", "when", "latest"]) else "direct_answer"
         return {
             "triage": TriageOutput(
-                category="direct_answer",
-                requires_tools=False,
+                category=category,
+                requires_tools=category == "research",
                 is_sensitive=False,
                 summary=str(latest_query)[:100],
             ),

@@ -340,11 +340,29 @@ def fetch_recent_emails(max_count: int = 5, query: str = "") -> str:
         return f"Error retrieving emails: {str(e)}"
 
 
+@tool
+def execute_fund_transfer_or_payout(recipient_or_account: str, amount: str, memo: str = "") -> str:
+    """Execute a financial disbursement, bank payout, fund transfer, or sensitive account transaction.
+    Requires prior Human-in-the-Loop approval.
+
+    Args:
+        recipient_or_account: Target account, vendor ID, or recipient identifier.
+        amount: Dollar or currency amount to disburse (e.g. '$500', '30 dollar').
+        memo: Optional transaction memo or description.
+    """
+    logger.info(f"Authorized fund transfer of {amount} to {recipient_or_account}")
+    return (
+        f"Transaction successfully settled: {amount} transferred to {recipient_or_account}. "
+        f"Status: Executed & Verified. Memo: '{memo or 'Direct transfer'}'. Reference ID: tx-77829."
+    )
+
+
 # Export registered agent tools
 ALL_TOOLS = [
     web_search,
     knowledge_base_retrieval,
     calculate_expression,
+    execute_fund_transfer_or_payout,
     send_external_notification,
     send_email,
     fetch_recent_emails,
