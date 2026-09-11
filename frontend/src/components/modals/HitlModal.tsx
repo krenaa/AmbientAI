@@ -16,19 +16,21 @@ export const HitlModal: React.FC<HitlModalProps> = ({
   onDecide,
 }) => {
   const [feedback, setFeedback] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<"approve" | "reject" | null>(null);
 
   if (!isOpen || !task) return null;
 
+  const isSubmitting = submittingAction !== null;
+
   const handleAction = async (approved: boolean) => {
-    setSubmitting(true);
+    setSubmittingAction(approved ? "approve" : "reject");
     try {
       await onDecide(task.id, approved, feedback.trim() || undefined);
       onClose();
     } catch {
       // Handled in caller toast
     } finally {
-      setSubmitting(false);
+      setSubmittingAction(null);
     }
   };
 
@@ -101,12 +103,15 @@ export const HitlModal: React.FC<HitlModalProps> = ({
         <div className="grid grid-cols-2 gap-3 pt-2">
           <button
             type="button"
-            disabled={submitting}
+            disabled={isSubmitting}
             onClick={() => handleAction(false)}
             className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-rose-500/15 border border-zinc-800 hover:border-rose-500/40 text-rose-300 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
           >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+            {submittingAction === "reject" ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-rose-400" />
+                <span>Rejecting...</span>
+              </>
             ) : (
               <>
                 <XCircle className="w-4 h-4 text-rose-400" />
@@ -117,12 +122,15 @@ export const HitlModal: React.FC<HitlModalProps> = ({
 
           <button
             type="button"
-            disabled={submitting}
+            disabled={isSubmitting}
             onClick={() => handleAction(true)}
             className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-zinc-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
           >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+            {submittingAction === "approve" ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
+                <span>Approving...</span>
+              </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4" />

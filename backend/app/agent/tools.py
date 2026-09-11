@@ -25,7 +25,7 @@ def web_search(query: str) -> str:
 
     try:
         client = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        response = client.search(query=query, max_results=5, search_depth="basic")
+        response = client.search(query=query, max_results=3, search_depth="basic")
 
         results = response.get("results", [])
         if not results:
@@ -36,7 +36,7 @@ def web_search(query: str) -> str:
             title = r.get("title", "No Title")
             url = r.get("url", "")
             content = r.get("content", "")
-            sanitized_content = content.replace("```", "'''")
+            sanitized_content = content[:350].replace("```", "'''")
             formatted_results.append(
                 f"Source: {title}\nURL: {url}\nSnippet: {sanitized_content}\n"
             )
