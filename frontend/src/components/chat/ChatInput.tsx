@@ -7,8 +7,6 @@ import {
   Calculator,
   ShieldAlert,
   ArrowUp,
-  Plus,
-  Paperclip
 } from "lucide-react";
 
 interface ChatInputProps {
@@ -17,7 +15,6 @@ interface ChatInputProps {
   onSubmit: () => void;
   isProcessing: boolean;
   onStop?: () => void;
-  onOpenKnowledge?: () => void;
   placeholder?: string;
 }
 
@@ -27,7 +24,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onSubmit,
   isProcessing,
   onStop,
-  onOpenKnowledge,
   placeholder = "Ask AmbientDesk anything... e.g. search web, query pgvector knowledge base, calculate AST math",
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,17 +60,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <span className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider pl-1 mr-1">
             Agent Modes:
           </span>
-          {onOpenKnowledge && (
-            <button
-              type="button"
-              onClick={onOpenKnowledge}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:text-purple-200 transition-all cursor-pointer whitespace-nowrap"
-              title="Upload PDF or document to Knowledge Base"
-            >
-              <Plus className="w-3 h-3 text-purple-400" />
-              <span>Upload PDF</span>
-            </button>
-          )}
           <button
             type="button"
             onClick={() => handleInsertModality("Search the live web for: ")}
@@ -124,19 +109,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         {/* Action controls row */}
         <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80">
           <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-            {onOpenKnowledge && (
-              <button
-                type="button"
-                onClick={onOpenKnowledge}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-300 hover:text-white transition-all cursor-pointer shadow-sm group"
-                title="Add PDF or Document to Knowledge Base"
-              >
-                <Plus className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-                <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="font-medium text-[11px]">Add PDF</span>
-              </button>
-            )}
-            <span className="hidden sm:flex items-center gap-1">
+            <span className="flex items-center gap-1 pl-1">
               <CornerDownLeft className="w-3 h-3" />
               Press <kbd className="font-mono bg-zinc-800 px-1 py-0.5 rounded text-zinc-400 text-[10px]">Enter</kbd> to run
             </span>

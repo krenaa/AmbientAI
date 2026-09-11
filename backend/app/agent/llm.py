@@ -147,17 +147,56 @@ def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str
     return candidates
 
 
+async def invoke_resiliently(
+    messages: List[Any],
+    temperature: float = 0.2,
+    tools: Optional[List[Any]] = None,
+    structured_schema: Optional[Any] = None,
+    preferred_model: Optional[str] = None,
+) -> Any:
+    """Invokes LLMs across providers sequentially with automatic failover on 429 quota, 404, or rate limits."""
+    raw_candidates = get_candidate_models(temperature, preferred_model=preferred_model)
+
+    if not raw_candidates:
+        raise ValueError(
+            "No LLM provider keys configured. Please set GROQ_API_KEY, GOOGLE_API_KEY, or OPENAI_API_KEY in .env"
+        )
+
+    last_error: Optional[Exception] = None
+
+    for candidate in raw_candidates:
+        model_name = getattr(candidate, "model_name", getattr(candidate, "model", str(candidate)))
+        try:
+            if structured_schema:
+                bound = candidate.with_structured_output(structured_schema)
+            elif tools:
+                bound = candidate.bind_tools(tools)
+            else:
+                bound = candidate
+
+            logger.info(f"Invoking model '{model_name}'...")
+            result = await bound.ainvoke(messages)
+            logger.info(f"Model '{model_name}' succeeded.")
+            return result
+        except Exception as e:
+            logger.warning(
+                f"Model '{model_name}' failed with error: {e}. Cascading to next available fallback model..."
+            )
+            last_error = e
+            continue
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("All LLM model candidates exhausted without response.")
+
+
 def get_resilient_llm(
     temperature: float = 0.2,
     tools: Optional[List[Any]] = None,
     structured_schema: Optional[Any] = None,
     preferred_model: Optional[str] = None,
 ) -> Any:
-    """Builds a multi-model, multi-provider resilient LLM chain with automatic cascading fallbacks.
-
-    If any model fails (due to 404, 429 rate limit, 503 overload, or context limit),
-    the execution seamlessly cascades down the chain of alternate models and keys.
-    """
+    """Builds a multi-model, multi-provider resilient LLM chain with automatic cascading fallbacks."""
     raw_candidates = get_candidate_models(temperature, preferred_model=preferred_model)
 
     if not raw_candidates:
@@ -187,8 +226,5 @@ def get_resilient_llm(
     fallbacks = bound_candidates[1:]
 
     if fallbacks:
-        logger.info(
-            f"Initialized Resilient LLM with {len(bound_candidates)} fallback models across configured providers."
-        )
         return primary.with_fallbacks(fallbacks)
     return primary

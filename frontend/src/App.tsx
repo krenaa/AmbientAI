@@ -445,7 +445,6 @@ export const App: React.FC = () => {
             setPrompt={setPromptInput}
             onSubmit={() => handleSubmitPrompt()}
             isProcessing={isExecuting}
-            onOpenKnowledge={() => setKnowledgeModalOpen(true)}
             onStop={() => {
               if (wsRef.current) {
                 wsRef.current.close();

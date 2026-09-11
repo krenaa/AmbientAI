@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import interrupt
 
 from app.agent.state import AgentState, TriageOutput
-from app.agent.llm import get_resilient_llm
+from app.agent.llm import invoke_resiliently, get_resilient_llm
 from app.agent.tools import ALL_TOOLS
 
 logger = logging.getLogger("ambientdesk.graph")
@@ -26,13 +26,8 @@ CRITICAL RULES:
 
 
 async def triage_node(state: AgentState) -> Dict[str, Any]:
-    """Classifies user request and checks for sensitive actions."""
+    """Classifies user request and checks for sensitive actions with automatic failover."""
     selected_model = state.get("selected_model")
-    structured_llm = get_resilient_llm(
-        temperature=0.0,
-        structured_schema=TriageOutput,
-        preferred_model=selected_model,
-    )
 
     user_messages = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
     raw_content = user_messages[-1].content if user_messages else "No input"
@@ -50,14 +45,19 @@ async def triage_node(state: AgentState) -> Dict[str, Any]:
     ]
 
     try:
-        triage_result: TriageOutput = await structured_llm.ainvoke(messages)
+        triage_result: TriageOutput = await invoke_resiliently(
+            messages,
+            temperature=0.0,
+            structured_schema=TriageOutput,
+            preferred_model=selected_model,
+        )
         is_sensitive = triage_result.is_sensitive or (triage_result.category == "sensitive_action")
         return {
             "triage": triage_result,
             "requires_approval": is_sensitive,
         }
     except Exception as e:
-        logger.warning(f"Structured triage failed, using fallback: {e}")
+        logger.warning(f"Structured triage failed across all models, using fallback: {e}")
         return {
             "triage": TriageOutput(
                 category="direct_answer",
@@ -87,18 +87,13 @@ async def approval_node(state: AgentState) -> Dict[str, Any]:
 
 
 async def agent_node(state: AgentState) -> Dict[str, Any]:
-    """Executes the task logic or handles rejected approvals."""
+    """Executes the task logic or handles rejected approvals with multi-model failover."""
     if state.get("approval_status") == "rejected":
         return {
             "messages": [AIMessage(content="Operation cancelled by user: Human approval was rejected.")]
         }
 
     selected_model = state.get("selected_model")
-    llm_with_tools = get_resilient_llm(
-        temperature=0.2,
-        tools=ALL_TOOLS,
-        preferred_model=selected_model,
-    )
     system_instruction = (
         "You are ambientdesk AI, an advanced, highly capable multi-agent assistant.\n"
         "Execute the user's task clearly, concisely, and reliably. Use registered tools when factual lookups, external searches, calculations, or emails are needed.\n\n"
@@ -132,13 +127,21 @@ async def agent_node(state: AgentState) -> Dict[str, Any]:
 
     messages = [SystemMessage(content=system_instruction)] + state["messages"]
     try:
-        response = await llm_with_tools.ainvoke(messages)
+        response = await invoke_resiliently(
+            messages,
+            temperature=0.2,
+            tools=ALL_TOOLS,
+            preferred_model=selected_model,
+        )
         return {"messages": [response]}
     except Exception as e:
         logger.warning(f"Resilient LLM with tools failed: {e}. Attempting direct response fallback...")
         try:
-            simple_llm = get_resilient_llm(temperature=0.2, preferred_model=selected_model)
-            response = await simple_llm.ainvoke(messages)
+            response = await invoke_resiliently(
+                messages,
+                temperature=0.2,
+                preferred_model=selected_model,
+            )
             return {"messages": [response]}
         except Exception as inner_e:
             logger.error(f"All LLM model candidates exhausted: {inner_e}")
