@@ -32,5 +32,6 @@ class AgentState(TypedDict):
     requires_approval: bool
     approval_status: Optional[Literal["pending", "approved", "rejected"]]
     approval_payload: Optional[Dict[str, Any]]
+    selected_model: Optional[str]
     final_output: Optional[str]
     error: Optional[str]

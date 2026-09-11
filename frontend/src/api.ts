@@ -118,14 +118,36 @@ export const fetchTaskById = async (taskId: string): Promise<AgentTask> => {
 
 export const createTask = async (
   prompt: string,
-  taskId?: string
+  taskId?: string,
+  model?: string
 ): Promise<AgentTask> => {
-  const payload: { prompt: string; task_id?: string } = { prompt };
+  const payload: { prompt: string; task_id?: string; model?: string } = { prompt };
   if (taskId) {
     payload.task_id = taskId;
   }
+  if (model && model !== "auto") {
+    payload.model = model;
+  }
   const res = await apiClient.post("/tasks/", payload);
   return res.data;
+};
+
+export const fetchAvailableModels = async (): Promise<{ selected_default: string; models: import("./types").ModelOption[] }> => {
+  try {
+    const res = await apiClient.get("/models/");
+    return res.data;
+  } catch {
+    // Fallback default list if offline
+    return {
+      selected_default: "auto",
+      models: [
+        { id: "auto", name: "⚡ Auto Fallback (Resilient Multi-Model)", provider: "Auto", is_free: true, is_available: true, badge: "Auto Failover" },
+        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "Google", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "llama-3.3-70b-versatile", name: "Groq: LLaMA 3.3 70B", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "gemma2-9b-it", name: "Groq: Gemma 2 9B (Ultra Fast)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+      ],
+    };
+  }
 };
 
 export const approveTask = async (taskId: string, approved: boolean): Promise<any> => {

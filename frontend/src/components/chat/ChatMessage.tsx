@@ -48,13 +48,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   // Robust Turn Alignment:
   // If promptTurns has more items than outputTurns (e.g. an earlier turn previously errored),
   // pad earlier missing turns so the latest response is always paired with the latest prompt.
+  // Robust Turn Alignment:
+  // If promptTurns has more items than outputTurns, pad earlier missing turns with empty strings
   let outputTurns = [...rawOutputTurns];
   if (promptTurns.length > outputTurns.length) {
     const missingCount = promptTurns.length - outputTurns.length;
-    const padding = Array(missingCount).fill(
-      task.error_message ? `⚠️ *Execution Error: ${task.error_message}*` : ""
-    );
-    outputTurns = [...padding, ...outputTurns];
+    outputTurns = [...Array(missingCount).fill(""), ...outputTurns];
   }
 
   return (
@@ -177,16 +176,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   </div>
                 )}
 
-                {/* Error Notice on Latest Turn */}
+                {/* Single Friendly Alert Notice on Latest Turn if error occurred */}
                 {isLatestTurn && (task.error_message || task.status === "failed") && (
-                  <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 space-y-1.5 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <AlertTriangle className="w-4 h-4 text-rose-400" />
-                      <span>Execution Error</span>
+                  <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-2.5 shadow-sm">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Model Execution Notice</span>
                     </div>
-                    <p className="text-xs text-rose-200/90 font-mono">
-                      {task.error_message || "An unexpected error occurred during pipeline execution."}
+                    <p className="text-xs text-zinc-300 leading-relaxed font-mono bg-zinc-950/60 p-3 rounded-xl border border-zinc-800/80">
+                      {task.error_message || "The selected model is unavailable or encountered an error."}
                     </p>
+                    <div className="flex items-center gap-2 text-xs text-amber-300/90 pt-1">
+                      <span>💡 <strong>Tip:</strong> Please select another free-tier model (e.g. <strong>Gemini 2.5 Flash</strong> or <strong>Groq LLaMA 3.3</strong>) from the Model selector dropdown in the top header and retry.</span>
+                    </div>
                   </div>
                 )}
               </div>

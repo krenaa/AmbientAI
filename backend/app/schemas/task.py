@@ -39,6 +39,7 @@ class AgentTaskResponse(BaseModel):
 class CreateTaskRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=10000)
     task_id: Optional[str] = None
+    model: Optional[str] = None
 
 
 class RenameTaskRequest(BaseModel):

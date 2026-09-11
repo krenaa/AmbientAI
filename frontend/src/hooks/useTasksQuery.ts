@@ -7,15 +7,26 @@ import {
   renameTask,
   deleteTask,
   fetchCurrentUser,
+  fetchAvailableModels,
 } from "../api";
-import type { AgentTask } from "../types";
+import type { AgentTask, ModelsResponse } from "../types";
 
 export const TASK_KEYS = {
   all: ["tasks"] as const,
   list: ["tasks", "list"] as const,
   detail: (id: string) => ["tasks", "detail", id] as const,
   user: ["currentUser"] as const,
+  models: ["availableModels"] as const,
 };
+
+// --- Models Query ---
+export function useModelsQuery() {
+  return useQuery<ModelsResponse>({
+    queryKey: TASK_KEYS.models,
+    queryFn: fetchAvailableModels,
+    staleTime: 1000 * 60 * 10, // 10 minutes
+  });
+}
 
 // --- User Profile Query ---
 export function useCurrentUserQuery(enabled: boolean = true) {
@@ -51,8 +62,8 @@ export function useTaskDetailQuery(taskId: string | null, enabled: boolean = tru
 export function useCreateTaskMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ prompt, taskId }: { prompt: string; taskId?: string }) =>
-      createTask(prompt, taskId),
+    mutationFn: ({ prompt, taskId, model }: { prompt: string; taskId?: string; model?: string }) =>
+      createTask(prompt, taskId, model),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
     },

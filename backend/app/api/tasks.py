@@ -110,7 +110,11 @@ async def create_task(
 
                 # Launch in-process async background workflow (replaces Celery!)
                 asyncio.create_task(
-                    execute_task_workflow(str(existing_task.id), prompt=user_prompt)
+                    execute_task_workflow(
+                        str(existing_task.id),
+                        prompt=user_prompt,
+                        model=payload.model,
+                    )
                 )
 
                 return serialize_task(existing_task)
@@ -149,7 +153,11 @@ async def create_task(
 
     # Launch in-process async background workflow
     asyncio.create_task(
-        execute_task_workflow(str(fresh_task.id), prompt=user_prompt)
+        execute_task_workflow(
+            str(fresh_task.id),
+            prompt=user_prompt,
+            model=payload.model,
+        )
     )
 
     return serialize_task(fresh_task)

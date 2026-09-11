@@ -51,3 +51,17 @@ export interface AgentTask {
   updated_at: string;
   logs?: TaskExecutionLog[];
 }
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  provider: string;
+  is_free: boolean;
+  is_available: boolean;
+  badge: string;
+}
+
+export interface ModelsResponse {
+  selected_default: string;
+  models: ModelOption[];
+}

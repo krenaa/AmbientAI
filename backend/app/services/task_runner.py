@@ -43,6 +43,7 @@ async def execute_task_workflow(
     task_id: str,
     prompt: Optional[str] = None,
     human_approved: Optional[bool] = None,
+    model: Optional[str] = None,
 ):
     """Asynchronous background worker executing LangGraph directly in-process.
     Replaces Celery and eliminates HTTP proxy hops."""
@@ -111,6 +112,7 @@ async def execute_task_workflow(
                     "requires_approval": False,
                     "approval_status": None,
                     "approval_payload": None,
+                    "selected_model": model,
                     "final_output": None,
                     "error": None,
                 }

@@ -6,8 +6,10 @@ import {
   LogOut,
   ChevronDown,
   Database,
+  Cpu,
+  Sparkles,
 } from "lucide-react";
-import type { AgentTask, UserProfile } from "../../types";
+import type { AgentTask, UserProfile, ModelOption } from "../../types";
 import { CategoryIcon } from "../common/CategoryIcon";
 import { getCategoryTheme } from "../../utils/theme";
 import { AmbientLogo } from "../common/AmbientLogo";
@@ -20,6 +22,9 @@ interface HeaderProps {
   user: UserProfile | null;
   outputColor: string;
   setOutputColor: (color: string) => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+  availableModels: ModelOption[];
   onOpenKnowledge: () => void;
   onOpenProfile: () => void;
   onOpenAuth: () => void;
@@ -33,6 +38,9 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   outputColor,
   setOutputColor,
+  selectedModel,
+  setSelectedModel,
+  availableModels,
   onOpenKnowledge,
   onOpenProfile,
   onOpenAuth,
@@ -40,6 +48,13 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const activeTheme = getCategoryTheme(activeTask?.triage_category, outputColor);
   const isAdmin = user?.is_staff || user?.role === "Admin";
+
+  const currentModelObj = availableModels.find((m) => m.id === selectedModel);
+  const currentModelName = currentModelObj
+    ? currentModelObj.name.replace(/^(Groq:\s*|Google:\s*)/, "")
+    : selectedModel === "auto"
+    ? "Auto Fallback"
+    : selectedModel;
 
   return (
     <header className="h-13 border-b border-zinc-800 bg-zinc-950 px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0 transition-colors">
@@ -74,6 +89,48 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2.5">
+        {/* Model Selector Dropdown */}
+        <div className="relative group">
+          <button
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-cyan-500/40 text-zinc-300 hover:text-white text-xs font-medium transition-all cursor-pointer shadow-sm"
+            title="Select Active Free Tier Model"
+          >
+            <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-[11px] font-medium truncate max-w-[130px] sm:max-w-[170px]">
+              {currentModelName}
+            </span>
+            <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-zinc-200 transition-transform group-hover:rotate-180" />
+          </button>
+
+          <div className="absolute right-0 top-full mt-1.5 w-64 p-1.5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 translate-y-1 invisible group-hover:opacity-100 group-hover:translate-y-0 group-hover:visible transition-all duration-150 z-50">
+            <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 mb-1">
+              <span>Active Model Engine</span>
+              <span className="text-emerald-400 flex items-center gap-1"><Sparkles className="w-2.5 h-2.5" /> 100% Free Tier</span>
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-0.5">
+              {availableModels.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedModel(m.id)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                    selectedModel === m.id
+                      ? "bg-zinc-800 text-cyan-300 font-medium"
+                      : "text-zinc-300 hover:text-white hover:bg-zinc-800/50"
+                  }`}
+                >
+                  <div className="flex flex-col min-w-0 pr-2">
+                    <span className="truncate text-xs font-medium">{m.name}</span>
+                    <span className="text-[10px] text-zinc-500">{m.provider} • {m.badge}</span>
+                  </div>
+                  {selectedModel === m.id && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Knowledge Base / PDF RAG Button */}
         <button
           onClick={onOpenKnowledge}

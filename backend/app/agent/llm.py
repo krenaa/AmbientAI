@@ -8,24 +8,20 @@ from app.config import get_settings
 logger = logging.getLogger("ambientdesk.llm")
 settings = get_settings()
 
-# Curated list of high-performance Groq models with function calling & chat capabilities
+# Curated list of verified active Groq models with tool/function calling
 GROQ_FALLBACK_MODELS = [
-    "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
-    "deepseek-r1-distill-llama-70b",
     "gemma2-9b-it",
     "mixtral-8x7b-32768",
+    "deepseek-r1-distill-llama-70b",
 ]
 
-# Curated list of Google Gemini models
+# Curated list of verified active Google Gemini models
 GEMINI_FALLBACK_MODELS = [
     "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3.6-flash",
-    "gemini-3.1-pro-preview",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
+    "gemini-2.5-flash-lite",
 ]
 
 
@@ -42,19 +38,56 @@ def _extract_keys(single_key: Optional[str], multi_keys: Optional[str]) -> List[
     return keys
 
 
-def get_candidate_models(temperature: float = 0.2) -> List[BaseChatModel]:
+def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str] = None) -> List[BaseChatModel]:
     """Generates an ordered list of LLM instances across all available providers and models."""
     candidates: List[BaseChatModel] = []
+    preferred_clean = preferred_model.strip() if preferred_model and preferred_model != "auto" else None
+
+    # Helper to instantiate preferred model first if matched
+    if preferred_clean:
+        groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
+        google_keys = _extract_keys(settings.GOOGLE_API_KEY, settings.GOOGLE_API_KEYS)
+
+        if "gemini" in preferred_clean.lower() and google_keys:
+            for k in google_keys:
+                try:
+                    candidates.append(
+                        ChatGoogleGenerativeAI(
+                            model=preferred_clean,
+                            google_api_key=k,
+                            temperature=temperature,
+                            max_retries=1,
+                            request_timeout=30.0,
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to load preferred Gemini model {preferred_clean}: {e}")
+        elif groq_keys:
+            for k in groq_keys:
+                try:
+                    candidates.append(
+                        ChatGroq(
+                            model=preferred_clean,
+                            api_key=k,
+                            temperature=temperature,
+                            max_retries=1,
+                            request_timeout=30.0,
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to load preferred Groq model {preferred_clean}: {e}")
 
     # 1. Groq Candidates
     groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
-    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL else []
+    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL and settings.GROQ_MODEL != "llama-3.1-8b-instant" else []
     for model_name in GROQ_FALLBACK_MODELS:
         if model_name not in groq_models:
             groq_models.append(model_name)
 
     for api_key in groq_keys:
         for model_name in groq_models:
+            if preferred_clean and model_name == preferred_clean:
+                continue
             try:
                 llm = ChatGroq(
                     model=model_name,
@@ -76,6 +109,8 @@ def get_candidate_models(temperature: float = 0.2) -> List[BaseChatModel]:
 
     for api_key in google_keys:
         for model_name in google_models:
+            if preferred_clean and model_name == preferred_clean:
+                continue
             try:
                 llm = ChatGoogleGenerativeAI(
                     model=model_name,
@@ -116,13 +151,14 @@ def get_resilient_llm(
     temperature: float = 0.2,
     tools: Optional[List[Any]] = None,
     structured_schema: Optional[Any] = None,
+    preferred_model: Optional[str] = None,
 ) -> Any:
     """Builds a multi-model, multi-provider resilient LLM chain with automatic cascading fallbacks.
 
     If any model fails (due to 404, 429 rate limit, 503 overload, or context limit),
     the execution seamlessly cascades down the chain of alternate models and keys.
     """
-    raw_candidates = get_candidate_models(temperature)
+    raw_candidates = get_candidate_models(temperature, preferred_model=preferred_model)
 
     if not raw_candidates:
         raise ValueError(

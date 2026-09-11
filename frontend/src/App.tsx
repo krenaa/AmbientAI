@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useTasksQuery,
+  useModelsQuery,
   useCreateTaskMutation,
   useRenameTaskMutation,
   useDeleteTaskMutation,
@@ -58,8 +59,9 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("ambient_session_expired", handleExpiry);
   }, [showToast]);
 
-  // Tasks Data via React Query (only fetched when authenticated)
+  // Tasks & Models Data via React Query (only fetched when authenticated)
   const { data: tasks = [], isLoading: isLoadingTasks } = useTasksQuery(!!token);
+  const { data: modelsData } = useModelsQuery();
   const createTaskMutation = useCreateTaskMutation();
   const renameTaskMutation = useRenameTaskMutation();
   const deleteTaskMutation = useDeleteTaskMutation();
@@ -70,6 +72,16 @@ export const App: React.FC = () => {
   const [promptInput, setPromptInput] = useState("");
   const [currentNodeName, setCurrentNodeName] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Active LLM Model Selection State (persisted)
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem("ambient_selected_model") || "auto";
+  });
+
+  const handleSetSelectedModel = (model: string) => {
+    setSelectedModel(model);
+    localStorage.setItem("ambient_selected_model", model);
+  };
 
   // Theme Accent Output Color State (persisted)
   const [outputColor, setOutputColor] = useState<string>(() => {
@@ -88,7 +100,7 @@ export const App: React.FC = () => {
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<AgentTask | null>(null);
 
   // Derive Active Task
-  const activeTask = tasks.find((t) => t.id === activeTaskId) || null;
+  const activeTask = tasks.find((t: AgentTask) => t.id === activeTaskId) || null;
   const isExecuting = activeTask?.status === "processing" || createTaskMutation.isPending;
 
   // Real-time WebSocket connection to active task
@@ -299,6 +311,7 @@ export const App: React.FC = () => {
       const resultTask = await createTaskMutation.mutateAsync({
         prompt: targetPrompt,
         taskId: currentActiveId && !currentActiveId.startsWith("temp-") ? currentActiveId : undefined,
+        model: selectedModel,
       });
 
       // Replace optimistic temp task with actual persisted server task
@@ -405,6 +418,9 @@ export const App: React.FC = () => {
           user={user}
           outputColor={outputColor}
           setOutputColor={handleSetOutputColor}
+          selectedModel={selectedModel}
+          setSelectedModel={handleSetSelectedModel}
+          availableModels={modelsData?.models || []}
           onOpenKnowledge={() => setKnowledgeModalOpen(true)}
           onOpenProfile={() => setProfileModalOpen(true)}
           onOpenAuth={() => {}}
