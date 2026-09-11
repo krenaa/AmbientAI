@@ -16,8 +16,6 @@ GROQ_FALLBACK_MODELS = [
     "gemma2-9b-it",
     "mixtral-8x7b-32768",
     "deepseek-r1-distill-llama-70b",
-    "llama3-70b-8192",
-    "llama3-8b-8192",
 ]
 
 
@@ -34,10 +32,23 @@ def _extract_keys(single_key: Optional[str], multi_keys: Optional[str]) -> List[
     return keys
 
 
+DECOMMISSIONED_MODELS = {"llama3-8b-8192", "llama3-70b-8192", "llama-3-8b-8192", "llama-3-70b-8192"}
+
+
+def sanitize_model_name(name: Optional[str]) -> Optional[str]:
+    """Replaces decommissioned or legacy model names with currently active Groq models."""
+    if not name:
+        return None
+    clean = name.strip()
+    if clean.lower() in DECOMMISSIONED_MODELS or "8192" in clean:
+        return "llama-3.3-70b-versatile"
+    return clean
+
+
 def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str] = None) -> List[BaseChatModel]:
     """Generates an ordered list of LLM instances across available Groq models."""
     candidates: List[BaseChatModel] = []
-    preferred_clean = preferred_model.strip() if preferred_model and preferred_model != "auto" else None
+    preferred_clean = sanitize_model_name(preferred_model) if preferred_model and preferred_model != "auto" else None
     groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
 
     # 1. Preferred model if explicitly requested by user
@@ -57,7 +68,8 @@ def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str
                 logger.debug(f"Failed to load preferred Groq model {preferred_clean}: {e}")
 
     # 2. Add all configured/fallback Groq models in prioritized order
-    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL else []
+    configured_model = sanitize_model_name(settings.GROQ_MODEL) or "llama-3.3-70b-versatile"
+    groq_models = [configured_model]
     for model_name in GROQ_FALLBACK_MODELS:
         if model_name not in groq_models:
             groq_models.append(model_name)

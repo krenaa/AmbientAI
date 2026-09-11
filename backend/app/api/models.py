@@ -35,14 +35,12 @@ GROQ_NAME_MAP: Dict[str, str] = {
     "gemma2-9b-it": "Gemma 2 9B (Ultra Fast)",
     "mixtral-8x7b-32768": "Mixtral 8x7B (32k Context)",
     "deepseek-r1-distill-llama-70b": "DeepSeek R1 Distill 70B",
-    "llama3-70b-8192": "LLaMA 3 70B (8k)",
-    "llama3-8b-8192": "LLaMA 3 8B (8k)",
     "qwen-2.5-32b": "Qwen 2.5 32B",
     "qwen-2.5-coder-32b": "Qwen 2.5 Coder 32B",
 }
 
-# Non-chat models to exclude
-EXCLUDED_MODEL_SUBSTRINGS = ["whisper", "guard", "tts", "embedding", "audio", "vision-preview"]
+# Non-chat models or decommissioned model substrings to exclude
+EXCLUDED_MODEL_SUBSTRINGS = ["whisper", "guard", "tts", "embedding", "audio", "vision-preview", "8192"]
 
 
 def format_groq_name(model_id: str) -> str:
@@ -98,8 +96,6 @@ async def list_available_models():
         "gemma2-9b-it",
         "mixtral-8x7b-32768",
         "deepseek-r1-distill-llama-70b",
-        "llama3-70b-8192",
-        "llama3-8b-8192",
     ]
 
     ordered_model_ids: List[str] = []
