@@ -157,7 +157,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             {modelMenuOpen && (
               <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl z-50 animate-fadeIn space-y-1">
                 <div className="flex items-center justify-between px-2.5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 mb-1">
-                  <span className="text-zinc-300 font-bold">LIVE AI MODELS</span>
+                  <span className="text-zinc-300 font-bold">LIVE GROQ MODELS</span>
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active
                   </span>

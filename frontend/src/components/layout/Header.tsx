@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Database,
   Cpu,
-  Sparkles,
 } from "lucide-react";
 import type { AgentTask, UserProfile, ModelOption } from "../../types";
 import { CategoryIcon } from "../common/CategoryIcon";
@@ -104,8 +103,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="absolute right-0 top-full mt-1.5 w-64 p-1.5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 translate-y-1 invisible group-hover:opacity-100 group-hover:translate-y-0 group-hover:visible transition-all duration-150 z-50">
             <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 mb-1">
-              <span>Active Model Engine</span>
-              <span className="text-emerald-400 flex items-center gap-1"><Sparkles className="w-2.5 h-2.5" /> 100% Free Tier</span>
+              <span className="text-zinc-300 font-bold">LIVE GROQ MODELS</span>
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active
+              </span>
             </div>
             <div className="max-h-60 overflow-y-auto space-y-0.5">
               {availableModels.map((m) => (

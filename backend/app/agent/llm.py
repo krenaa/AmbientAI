@@ -11,17 +11,13 @@ settings = get_settings()
 # Curated list of verified active Groq models with tool/function calling
 GROQ_FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama-3.1-70b-versatile",
     "gemma2-9b-it",
     "mixtral-8x7b-32768",
     "deepseek-r1-distill-llama-70b",
-]
-
-# Curated list of verified active Google Gemini models
-GEMINI_FALLBACK_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-flash-lite",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
 ]
 
 
@@ -39,47 +35,29 @@ def _extract_keys(single_key: Optional[str], multi_keys: Optional[str]) -> List[
 
 
 def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str] = None) -> List[BaseChatModel]:
-    """Generates an ordered list of LLM instances across all available providers and models."""
+    """Generates an ordered list of LLM instances across available Groq models."""
     candidates: List[BaseChatModel] = []
     preferred_clean = preferred_model.strip() if preferred_model and preferred_model != "auto" else None
-
-    # Helper to instantiate preferred model first if matched
-    if preferred_clean:
-        groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
-        google_keys = _extract_keys(settings.GOOGLE_API_KEY, settings.GOOGLE_API_KEYS)
-
-        if "gemini" in preferred_clean.lower() and google_keys:
-            for k in google_keys:
-                try:
-                    candidates.append(
-                        ChatGoogleGenerativeAI(
-                            model=preferred_clean,
-                            google_api_key=k,
-                            temperature=temperature,
-                            max_retries=1,
-                            request_timeout=30.0,
-                        )
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to load preferred Gemini model {preferred_clean}: {e}")
-        elif groq_keys:
-            for k in groq_keys:
-                try:
-                    candidates.append(
-                        ChatGroq(
-                            model=preferred_clean,
-                            api_key=k,
-                            temperature=temperature,
-                            max_retries=1,
-                            request_timeout=30.0,
-                        )
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to load preferred Groq model {preferred_clean}: {e}")
-
-    # 1. Groq Candidates
     groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
-    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL and settings.GROQ_MODEL != "llama-3.1-8b-instant" else []
+
+    # 1. Preferred model if explicitly requested by user
+    if preferred_clean and groq_keys:
+        for k in groq_keys:
+            try:
+                candidates.append(
+                    ChatGroq(
+                        model=preferred_clean,
+                        api_key=k,
+                        temperature=temperature,
+                        max_retries=1,
+                        request_timeout=30.0,
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Failed to load preferred Groq model {preferred_clean}: {e}")
+
+    # 2. Add all configured/fallback Groq models in prioritized order
+    groq_models = [settings.GROQ_MODEL] if settings.GROQ_MODEL else []
     for model_name in GROQ_FALLBACK_MODELS:
         if model_name not in groq_models:
             groq_models.append(model_name)
@@ -100,31 +78,8 @@ def get_candidate_models(temperature: float = 0.2, preferred_model: Optional[str
             except Exception as e:
                 logger.debug(f"Could not initialize ChatGroq({model_name}): {e}")
 
-    # 2. Google Gemini Candidates
-    google_keys = _extract_keys(settings.GOOGLE_API_KEY, settings.GOOGLE_API_KEYS)
-    google_models = [settings.GOOGLE_MODEL] if settings.GOOGLE_MODEL else []
-    for model_name in GEMINI_FALLBACK_MODELS:
-        if model_name not in google_models:
-            google_models.append(model_name)
-
-    for api_key in google_keys:
-        for model_name in google_models:
-            if preferred_clean and model_name == preferred_clean:
-                continue
-            try:
-                llm = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    google_api_key=api_key,
-                    temperature=temperature,
-                    max_retries=1,
-                    request_timeout=30.0,
-                )
-                candidates.append(llm)
-            except Exception as e:
-                logger.debug(f"Could not initialize ChatGoogleGenerativeAI({model_name}): {e}")
-
-    # 3. Optional OpenAI Candidates
-    if settings.OPENAI_API_KEY:
+    # 3. Optional OpenAI Fallback (if Groq keys not configured or depleted)
+    if not candidates and settings.OPENAI_API_KEY:
         try:
             from langchain_openai import ChatOpenAI
             openai_models = [settings.OPENAI_MODEL, "gpt-4o-mini", "gpt-4o"]
