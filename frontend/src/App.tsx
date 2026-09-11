@@ -445,6 +445,9 @@ export const App: React.FC = () => {
             setPrompt={setPromptInput}
             onSubmit={() => handleSubmitPrompt()}
             isProcessing={isExecuting}
+            selectedModel={selectedModel}
+            onSelectModel={handleSetSelectedModel}
+            availableModels={modelsData?.models || []}
             onStop={() => {
               if (wsRef.current) {
                 wsRef.current.close();

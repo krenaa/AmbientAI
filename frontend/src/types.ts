@@ -58,6 +58,7 @@ export interface ModelOption {
   provider: string;
   is_free: boolean;
   is_available: boolean;
+  status?: string;
   badge: string;
 }
 
