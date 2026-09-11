@@ -40,7 +40,7 @@ GROQ_NAME_MAP: Dict[str, str] = {
 }
 
 # Non-chat models or decommissioned model substrings to exclude
-EXCLUDED_MODEL_SUBSTRINGS = ["whisper", "guard", "tts", "embedding", "audio", "vision-preview", "8192"]
+EXCLUDED_MODEL_SUBSTRINGS = ["whisper", "guard", "tts", "embedding", "audio", "vision-preview", "8192", "allam", "playai"]
 
 
 def format_groq_name(model_id: str) -> str:
