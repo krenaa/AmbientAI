@@ -96,7 +96,7 @@ export const App: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!activeTaskId || !token) {
+    if (!activeTaskId || !token || activeTaskId.startsWith("temp-")) {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -239,8 +239,37 @@ export const App: React.FC = () => {
     const currentActiveId = activeTaskId;
     setPromptInput("");
 
-    // Optimistically update existing task in query cache if continuing conversation
-    if (currentActiveId) {
+    // Optimistic ID if starting a new session
+    const tempId = currentActiveId || `temp-${Date.now()}`;
+
+    if (!currentActiveId) {
+      // 1. Instantly create and select an optimistic task so the UI switches to chat view with 0ms lag
+      const optimisticTask: AgentTask = {
+        id: tempId,
+        title: targetPrompt.split("\n")[0].slice(0, 60) || "New Agent Session",
+        prompt: targetPrompt,
+        status: "processing",
+        execution_time_ms: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        logs: [
+          {
+            id: `log-opt-${Date.now()}`,
+            node_name: "user_message",
+            message: targetPrompt,
+            metadata: {},
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) => [
+        optimisticTask,
+        ...old,
+      ]);
+      setActiveTaskId(tempId);
+    } else {
+      // 2. Optimistically update existing task in query cache if continuing conversation
       queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
         old.map((t) => {
           if (t.id === currentActiveId) {
@@ -249,6 +278,16 @@ export const App: React.FC = () => {
               prompt: `${t.prompt}\n\n[Follow-up]: ${targetPrompt}`,
               status: "processing" as const,
               error_message: undefined,
+              logs: [
+                ...(t.logs || []),
+                {
+                  id: `log-opt-${Date.now()}`,
+                  node_name: "user_message",
+                  message: targetPrompt,
+                  metadata: {},
+                  timestamp: new Date().toISOString(),
+                },
+              ],
             };
           }
           return t;
@@ -259,13 +298,25 @@ export const App: React.FC = () => {
     try {
       const resultTask = await createTaskMutation.mutateAsync({
         prompt: targetPrompt,
-        taskId: currentActiveId || undefined,
+        taskId: currentActiveId && !currentActiveId.startsWith("temp-") ? currentActiveId : undefined,
       });
-      if (!currentActiveId) {
+
+      // Replace optimistic temp task with actual persisted server task
+      queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
+        old.map((t) => (t.id === tempId ? resultTask : t))
+      );
+
+      if (!currentActiveId || currentActiveId.startsWith("temp-")) {
         setActiveTaskId(resultTask.id);
       }
       showToast(currentActiveId ? "Agent continuing conversation..." : "Agent session started.", "info");
     } catch (err: any) {
+      if (!currentActiveId) {
+        queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
+          old.filter((t) => t.id !== tempId)
+        );
+        setActiveTaskId(null);
+      }
       showToast(err?.response?.data?.detail || "Failed to launch agent", "error");
       queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
     }
