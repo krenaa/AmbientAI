@@ -1,514 +1,281 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import React, { useState, useEffect } from "react";
+import { Toaster, toast } from "react-hot-toast";
 import {
-  useTasksQuery,
-  useModelsQuery,
-  useCreateTaskMutation,
-  useRenameTaskMutation,
-  useDeleteTaskMutation,
-  useApproveTaskMutation,
-  useCurrentUserQuery,
-  TASK_KEYS,
-} from "./hooks/useTasksQuery";
-import { login as apiLogin, register as apiRegister, logout as apiLogout, deleteTask as apiDeleteTask } from "./api";
-import type { AgentTask, UserProfile } from "./types";
-import { useToast } from "./Toast";
+  Bot,
+  LogIn,
+  UserPlus,
+  LogOut,
+  Send,
+  MessageSquare,
+  Sparkles,
+  PlusCircle,
+} from "lucide-react";
+import { useAuth, AuthProvider } from "./context/AuthContext";
+import { checkHealth, registerUser, loginUser } from "./services/api";
 
-// Layout & UI Components
-import { AppSplashScreen } from "./components/layout/AppSplashScreen";
-import { Header } from "./components/layout/Header";
-import { Sidebar } from "./components/layout/Sidebar";
-import { ChatContainer } from "./components/chat/ChatContainer";
-import { ChatInput } from "./components/chat/ChatInput";
-import { AuthScreen } from "./components/auth/AuthScreen";
+const AuthView: React.FC = () => {
+  const { login } = useAuth();
+  const [isRegister, setIsRegister] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-// Modals
-import { ProfileModal } from "./components/modals/ProfileModal";
-import { HitlModal } from "./components/modals/HitlModal";
-import { DeleteTaskModal } from "./components/modals/DeleteTaskModal";
-import { KnowledgeModal } from "./components/modals/KnowledgeModal";
-
-export const App: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
-
-  // Authentication & Profile State
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem("ambient_token"));
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = sessionStorage.getItem("ambient_user");
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const { data: userProfileData } = useCurrentUserQuery(!!token);
-
-  useEffect(() => {
-    if (userProfileData) {
-      setUser(userProfileData);
-      sessionStorage.setItem("ambient_user", JSON.stringify(userProfileData));
-    }
-  }, [userProfileData]);
-
-  // Handle mid-session 401 expiry
-  useEffect(() => {
-    const handleExpiry = () => {
-      setToken(null);
-      setUser(null);
-      showToast("Session expired. Please sign in again.", "info");
-    };
-    window.addEventListener("ambient_session_expired", handleExpiry);
-    return () => window.removeEventListener("ambient_session_expired", handleExpiry);
-  }, [showToast]);
-
-  // Tasks & Models Data via React Query (only fetched when authenticated)
-  const { data: tasks = [], isLoading: isLoadingTasks } = useTasksQuery(!!token);
-  const { data: modelsData } = useModelsQuery();
-  const createTaskMutation = useCreateTaskMutation();
-  const renameTaskMutation = useRenameTaskMutation();
-  const deleteTaskMutation = useDeleteTaskMutation();
-  const approveTaskMutation = useApproveTaskMutation();
-
-  // Active Session & Prompt State
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [promptInput, setPromptInput] = useState("");
-  const [currentNodeName, setCurrentNodeName] = useState<string | undefined>(undefined);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Active LLM Model Selection State (persisted)
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem("ambient_selected_model") || "auto";
-  });
-
-  const handleSetSelectedModel = (model: string) => {
-    setSelectedModel(model);
-    localStorage.setItem("ambient_selected_model", model);
-  };
-
-  // Theme Accent Output Color State (persisted)
-  const [outputColor, setOutputColor] = useState<string>(() => {
-    return localStorage.getItem("ambient_output_color") || "auto";
-  });
-
-  const handleSetOutputColor = (color: string) => {
-    setOutputColor(color);
-    localStorage.setItem("ambient_output_color", color);
-  };
-
-  // Modals State
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
-  const [hitlTask, setHitlTask] = useState<AgentTask | null>(null);
-  const [deleteTaskTarget, setDeleteTaskTarget] = useState<AgentTask | null>(null);
-
-  // Derive Active Task
-  const activeTask = tasks.find((t: AgentTask) => t.id === activeTaskId) || null;
-  const isExecuting = activeTask?.status === "processing" || createTaskMutation.isPending;
-
-  // Real-time WebSocket connection to active task
-  const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    if (!activeTaskId || !token || activeTaskId.startsWith("temp-")) {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      setWsConnected(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error("Please enter email and password");
       return;
     }
-
-    // Determine WS URL with sanitization
-    let wsBase = "";
-    if (import.meta.env.VITE_API_URL) {
-      let url = import.meta.env.VITE_API_URL.trim().replace(/\/+$/, "");
-      if (!url.endsWith("/api")) {
-        url = `${url}/api`;
-      }
-      wsBase = url.replace(/^http/, "ws");
-    } else if (typeof window !== "undefined" && window.location.port === "5173") {
-      wsBase = "ws://localhost:8000/api";
-    } else {
-      const loc = window.location;
-      const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
-      wsBase = `${protocol}//${loc.host}/api`;
-    }
-
-    const wsUrl = `${wsBase}/ws/tasks/${activeTaskId}/`;
-    const socket = new WebSocket(wsUrl);
-    wsRef.current = socket;
-
-    socket.onopen = () => {
-      setWsConnected(true);
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-
-        if (msg.type === "node_update") {
-          setCurrentNodeName(msg.node_name || msg.node);
-          queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-            old.map((t) => {
-              if (t.id === activeTaskId) {
-                const logs = t.logs || [];
-                return {
-                  ...t,
-                  logs: [
-                    ...logs,
-                    {
-                      id: Math.random().toString(36).substring(2, 9),
-                      node_name: msg.node_name || msg.node,
-                      message: msg.message || `Node execution: ${msg.node_name || msg.node}`,
-                      metadata: msg.metadata,
-                      timestamp: new Date().toISOString(),
-                    },
-                  ],
-                };
-              }
-              return t;
-            })
-          );
-        } else if (msg.type === "task_update" || msg.type === "token_stream" || msg.type === "task_complete") {
-          const updateData = msg.data || msg;
-          queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-            old.map((t) => {
-              if (t.id === activeTaskId) {
-                return {
-                  ...t,
-                  ...updateData,
-                  output: updateData.output !== undefined ? updateData.output : t.output,
-                  status: updateData.status !== undefined ? updateData.status : t.status,
-                  execution_time_ms:
-                    updateData.execution_time_ms !== undefined
-                      ? updateData.execution_time_ms
-                      : t.execution_time_ms,
-                };
-              }
-              return t;
-            })
-          );
-
-          if (msg.type === "task_complete") {
-            setCurrentNodeName(undefined);
-            queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
-            showToast("Agent completed workflow execution.", "success");
-          }
-        }
-      } catch (err) {
-        console.error("Failed to parse WebSocket message:", err);
-      }
-    };
-
-    socket.onclose = () => {
-      setWsConnected(false);
-    };
-
-    socket.onerror = () => {
-      setWsConnected(false);
-    };
-
-    return () => {
-      socket.close();
-    };
-  }, [activeTaskId, token, queryClient, showToast]);
-
-  // Auth Handlers
-  const handleLogin = async (email: string, pass: string) => {
-    const res = await apiLogin(email, pass);
-    setToken(res.token);
-    setUser(res.user || null);
-    queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
-    showToast("Signed in successfully.", "success");
-  };
-
-  const handleRegister = async (email: string, pass: string, fullName: string) => {
-    const res = await apiRegister(email, pass, fullName);
-    setToken(res.token);
-    setUser(res.user || null);
-    queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
-    showToast("Account created successfully.", "success");
-  };
-
-  const handleLogout = () => {
-    apiLogout();
-    setToken(null);
-    setUser(null);
-    queryClient.clear();
-    showToast("Signed out.", "info");
-  };
-
-  // Task Actions
-  const handleNewSession = () => {
-    setActiveTaskId(null);
-    setPromptInput("");
-    setCurrentNodeName(undefined);
-  };
-
-  const handleSubmitPrompt = async (customPrompt?: string) => {
-    const targetPrompt = (customPrompt || promptInput).trim();
-    if (!targetPrompt || isExecuting) return;
-
-    const currentActiveId = activeTaskId;
-    setPromptInput("");
-
-    // Optimistic ID if starting a new session
-    const tempId = currentActiveId || `temp-${Date.now()}`;
-
-    if (!currentActiveId) {
-      // 1. Instantly create and select an optimistic task so the UI switches to chat view with 0ms lag
-      const optimisticTask: AgentTask = {
-        id: tempId,
-        title: targetPrompt.split("\n")[0].slice(0, 60) || "New Agent Session",
-        prompt: targetPrompt,
-        status: "processing",
-        execution_time_ms: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        logs: [
-          {
-            id: `log-opt-${Date.now()}`,
-            node_name: "user_message",
-            message: targetPrompt,
-            metadata: {},
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
-
-      queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) => [
-        optimisticTask,
-        ...old,
-      ]);
-      setActiveTaskId(tempId);
-    } else {
-      // 2. Optimistically update existing task in query cache if continuing conversation
-      queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-        old.map((t) => {
-          if (t.id === currentActiveId) {
-            return {
-              ...t,
-              prompt: `${t.prompt}\n\n[Follow-up]: ${targetPrompt}`,
-              status: "processing" as const,
-              error_message: undefined,
-              logs: [
-                ...(t.logs || []),
-                {
-                  id: `log-opt-${Date.now()}`,
-                  node_name: "user_message",
-                  message: targetPrompt,
-                  metadata: {},
-                  timestamp: new Date().toISOString(),
-                },
-              ],
-            };
-          }
-          return t;
-        })
-      );
-    }
-
+    setLoading(true);
     try {
-      const resultTask = await createTaskMutation.mutateAsync({
-        prompt: targetPrompt,
-        taskId: currentActiveId && !currentActiveId.startsWith("temp-") ? currentActiveId : undefined,
-        model: selectedModel,
-      });
-
-      // Replace optimistic temp task with actual persisted server task
-      queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-        old.map((t) => (t.id === tempId ? resultTask : t))
-      );
-
-      if (!currentActiveId || currentActiveId.startsWith("temp-")) {
-        setActiveTaskId(resultTask.id);
+      if (isRegister) {
+        const res = await registerUser(email, password);
+        login(res.access_token, res.user);
+        toast.success("Account created and logged in!");
+      } else {
+        const res = await loginUser(email, password);
+        login(res.access_token, res.user);
+        toast.success("Logged in successfully!");
       }
-      showToast(currentActiveId ? "Agent continuing conversation..." : "Agent session started.", "info");
     } catch (err: any) {
-      if (!currentActiveId) {
-        queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-          old.filter((t) => t.id !== tempId)
-        );
-        setActiveTaskId(null);
-      }
-      showToast(err?.response?.data?.detail || "Failed to launch agent", "error");
-      queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
+      const detail =
+        err.response?.data?.detail || "Authentication failed. Please check credentials.";
+      toast.error(detail);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const handleRenameTask = async (taskId: string, newTitle: string) => {
-    try {
-      await renameTaskMutation.mutateAsync({ taskId, title: newTitle });
-      showToast("Session renamed.", "success");
-    } catch (err: any) {
-      showToast(err?.response?.data?.detail || "Failed to rename session", "error");
-    }
-  };
-
-  const handleDeleteConfirm = async (taskId: string) => {
-    try {
-      await deleteTaskMutation.mutateAsync(taskId);
-      if (activeTaskId === taskId) {
-        setActiveTaskId(null);
-      }
-      showToast("Session deleted.", "success");
-    } catch (err: any) {
-      showToast(err?.response?.data?.detail || "Failed to delete session", "error");
-    }
-  };
-
-  const handleHitlDecide = async (taskId: string, approved: boolean, feedback?: string) => {
-    try {
-      await approveTaskMutation.mutateAsync({ taskId, approved });
-      if (feedback) {
-        console.info(`User feedback for task ${taskId}: ${feedback}`);
-      }
-      showToast(approved ? "Action authorized and resumed." : "Action rejected by user.", approved ? "success" : "info");
-    } catch (err: any) {
-      showToast(err?.response?.data?.detail || "Failed to submit approval", "error");
-    }
-  };
-
-  const handleClearAll = async () => {
-    if (!window.confirm("Are you sure you want to delete all session history?")) return;
-    try {
-      for (const t of tasks) {
-        await apiDeleteTask(t.id);
-      }
-      queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
-      setActiveTaskId(null);
-      showToast("All sessions cleared.", "info");
-    } catch (err: any) {
-      showToast("Failed to clear some sessions.", "error");
-    }
-  };
-
-  // 1. If not authenticated, require Sign In / Sign Up first!
-  if (!token) {
-    return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />;
-  }
-
-  // 2. Show App splash screen during initial task load after authentication
-  if (isLoadingTasks && tasks.length === 0) {
-    return <AppSplashScreen />;
-  }
 
   return (
-    <div className="flex h-screen w-screen ambient-gradient text-zinc-100 overflow-hidden font-sans select-none antialiased">
-      {/* 1. Left Modular Sidebar */}
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        tasks={tasks}
-        activeTask={activeTask}
-        onSelectTask={(task) => setActiveTaskId(task.id)}
-        onNewTask={handleNewSession}
-        onRenameTask={handleRenameTask}
-        onDeleteRequest={(task) => setDeleteTaskTarget(task)}
-        onClearAll={handleClearAll}
-        isLoading={isLoadingTasks}
-      />
+    <div className="flex min-h-screen items-center justify-center p-4 ambient-gradient">
+      <div className="w-full max-w-md rounded-2xl glass-panel p-8 shadow-2xl border border-white/10">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg mb-3">
+            <Bot className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AmbientAI</h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            {isRegister ? "Create a new account" : "Sign in to access your agentic workspace"}
+          </p>
+        </div>
 
-      {/* 2. Main Center / Chat Viewport */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <Header
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          activeTask={activeTask}
-          wsConnected={wsConnected}
-          user={user}
-          outputColor={outputColor}
-          setOutputColor={handleSetOutputColor}
-          selectedModel={selectedModel}
-          setSelectedModel={handleSetSelectedModel}
-          availableModels={modelsData?.models || []}
-          onOpenKnowledge={() => setKnowledgeModalOpen(true)}
-          onOpenProfile={() => setProfileModalOpen(true)}
-          onOpenAuth={() => {}}
-          onLogout={handleLogout}
-        />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="developer@ambientai.local"
+              required
+              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+            />
+          </div>
 
-        <main className="flex-1 flex flex-col overflow-hidden relative">
-          <ChatContainer
-            activeTask={activeTask}
-            outputColor={outputColor}
-            isStreaming={isExecuting}
-            currentNodeName={currentNodeName}
-            onOpenHitlModal={(task) => setHitlTask(task)}
-            onSelectSuggestedPrompt={(prompt) => {
-              setPromptInput(prompt);
-              handleSubmitPrompt(prompt);
-            }}
-          />
+          <div>
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+            />
+          </div>
 
-          <ChatInput
-            prompt={promptInput}
-            setPrompt={setPromptInput}
-            onSubmit={() => handleSubmitPrompt()}
-            isProcessing={isExecuting}
-            selectedModel={selectedModel}
-            onSelectModel={handleSetSelectedModel}
-            availableModels={modelsData?.models || []}
-            onStop={() => {
-              if (wsRef.current) {
-                wsRef.current.close();
-                wsRef.current = null;
-              }
-              setWsConnected(false);
-              if (activeTaskId) {
-                queryClient.setQueryData<AgentTask[]>(TASK_KEYS.list, (old = []) =>
-                  old.map((t) =>
-                    t.id === activeTaskId
-                      ? {
-                          ...t,
-                          status: "completed",
-                          output: t.output || "Execution stopped by user.",
-                        }
-                      : t
-                  )
-                );
-              }
-              showToast("Execution stopped by user.", "info");
-            }}
-          />
-        </main>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-md hover:shadow-cyan-500/20 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {loading ? (
+              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : isRegister ? (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Register</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Sign In</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setIsRegister(!isRegister)}
+            className="text-sm text-cyan-400 hover:text-cyan-300 font-medium transition-colors cursor-pointer"
+          >
+            {isRegister
+              ? "Already have an account? Sign in"
+              : "Don't have an account? Create one"}
+          </button>
+        </div>
       </div>
-
-      {/* 3. Interactive Modals */}
-      <ProfileModal
-        isOpen={profileModalOpen}
-        onClose={() => setProfileModalOpen(false)}
-        user={user}
-        onLogout={handleLogout}
-        onProfileUpdated={(updated) => {
-          setUser(updated);
-          sessionStorage.setItem("ambient_user", JSON.stringify(updated));
-          queryClient.invalidateQueries({ queryKey: TASK_KEYS.all });
-        }}
-      />
-
-      <KnowledgeModal
-        isOpen={knowledgeModalOpen}
-        onClose={() => setKnowledgeModalOpen(false)}
-        onSelectDocumentForPrompt={(filename) => {
-          setPromptInput(`According to the uploaded document "${filename}", please explain: `);
-        }}
-      />
-
-      <HitlModal
-        isOpen={!!hitlTask}
-        task={hitlTask}
-        onClose={() => setHitlTask(null)}
-        onDecide={handleHitlDecide}
-      />
-
-      <DeleteTaskModal
-        isOpen={!!deleteTaskTarget}
-        task={deleteTaskTarget}
-        onClose={() => setDeleteTaskTarget(null)}
-        onConfirmDelete={handleDeleteConfirm}
-      />
     </div>
   );
 };
 
-export default App;
+const MainDashboard: React.FC = () => {
+  const { user, logout } = useAuth();
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+
+  useEffect(() => {
+    let isMounted = true;
+    const check = async () => {
+      try {
+        await checkHealth();
+        if (isMounted) setBackendStatus("online");
+      } catch (e) {
+        if (isMounted) setBackendStatus("offline");
+      }
+    };
+    check();
+    const interval = setInterval(check, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+      {/* Sidebar */}
+      <aside className="w-64 border-r border-zinc-800/80 bg-zinc-900/40 flex flex-col">
+        <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
+              <Bot className="w-5 h-5" />
+            </div>
+            <span className="font-semibold text-sm tracking-wide text-white">AmbientAI</span>
+          </div>
+          <button
+            onClick={() => toast.success("New chat initialized")}
+            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            title="New Conversation"
+          >
+            <PlusCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          <div className="px-2 py-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            Conversations
+          </div>
+          <button className="w-full text-left px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/40 text-sm text-zinc-200 flex items-center gap-2 cursor-pointer">
+            <MessageSquare className="w-4 h-4 text-cyan-400" />
+            <span className="truncate">General Workspace</span>
+          </button>
+        </div>
+
+        <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/60">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col truncate pr-2">
+              <span className="text-xs text-zinc-400 truncate">{user?.email}</span>
+              <span className="text-[10px] text-zinc-500">Core v1.0.0</span>
+            </div>
+            <button
+              onClick={logout}
+              className="p-1.5 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition-colors cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Chat Area */}
+      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative">
+        {/* Top Header */}
+        <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-zinc-900/20 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-medium text-zinc-200">LangGraph HITL Core</h2>
+            <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              StateGraph + RAG
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400 flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  backendStatus === "online"
+                    ? "bg-emerald-500 animate-pulse"
+                    : backendStatus === "checking"
+                    ? "bg-amber-500"
+                    : "bg-rose-500"
+                }`}
+              />
+              Backend: {backendStatus}
+            </span>
+          </div>
+        </header>
+
+        {/* Messages placeholder */}
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col justify-center items-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4 shadow-inner">
+            <Sparkles className="w-8 h-8 animate-pulse-glow" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">AmbientAI Core Rebuild</h3>
+          <p className="text-sm text-zinc-400 max-w-md">
+            Minimal resilient architecture featuring native WebSockets, LangGraph checkpointing, and pgvector RAG.
+          </p>
+        </div>
+
+        {/* Input Bar Placeholder */}
+        <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 p-2 focus-within:border-cyan-500 transition-colors">
+            <input
+              type="text"
+              placeholder="Ask a question or request a task..."
+              className="flex-1 bg-transparent px-3 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none"
+            />
+            <button
+              onClick={() => toast("Input wired in Phase 4")}
+              className="p-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-medium transition-colors cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+const AppContent: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  return (
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: "#18181b",
+            color: "#f4f4f5",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+          },
+        }}
+      />
+      {isAuthenticated ? <MainDashboard /> : <AuthView />}
+    </>
+  );
+};
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
