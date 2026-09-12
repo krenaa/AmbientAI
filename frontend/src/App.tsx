@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Toaster, toast } from "react-hot-toast";
 import {
   Bot,
   LogIn,
   UserPlus,
   LogOut,
-  Send,
   MessageSquare,
-  Sparkles,
   PlusCircle,
 } from "lucide-react";
 import { useAuth, AuthProvider } from "./context/AuthContext";
-import { checkHealth, registerUser, loginUser } from "./services/api";
+import { registerUser, loginUser } from "./services/api";
+import { ChatWindow } from "./components/ChatWindow";
 
 const AuthView: React.FC = () => {
   const { login } = useAuth();
@@ -68,7 +67,7 @@ const AuthView: React.FC = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="developer@ambientai.local"
+              placeholder="developer@ambientai.com"
               required
               className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
             />
@@ -125,32 +124,35 @@ const AuthView: React.FC = () => {
   );
 };
 
+interface ConversationTab {
+  id: string;
+  title: string;
+}
+
 const MainDashboard: React.FC = () => {
   const { user, logout } = useAuth();
-  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [conversations, setConversations] = useState<ConversationTab[]>([
+    { id: "e1b2c3d4-0000-4000-a000-000000000001", title: "General Workspace" },
+  ]);
+  const [activeConvId, setActiveConvId] = useState<string>(
+    "e1b2c3d4-0000-4000-a000-000000000001"
+  );
 
-  useEffect(() => {
-    let isMounted = true;
-    const check = async () => {
-      try {
-        await checkHealth();
-        if (isMounted) setBackendStatus("online");
-      } catch (e) {
-        if (isMounted) setBackendStatus("offline");
-      }
+  const handleCreateConversation = () => {
+    const newId = crypto.randomUUID();
+    const newConv: ConversationTab = {
+      id: newId,
+      title: `Conversation ${conversations.length + 1}`,
     };
-    check();
-    const interval = setInterval(check, 15000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+    setConversations((prev) => [newConv, ...prev]);
+    setActiveConvId(newId);
+    toast.success("New conversation started!");
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-zinc-800/80 bg-zinc-900/40 flex flex-col">
+      <aside className="w-64 border-r border-zinc-800/80 bg-zinc-900/40 flex flex-col shrink-0">
         <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
@@ -159,7 +161,7 @@ const MainDashboard: React.FC = () => {
             <span className="font-semibold text-sm tracking-wide text-white">AmbientAI</span>
           </div>
           <button
-            onClick={() => toast.success("New chat initialized")}
+            onClick={handleCreateConversation}
             className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             title="New Conversation"
           >
@@ -171,10 +173,27 @@ const MainDashboard: React.FC = () => {
           <div className="px-2 py-1 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
             Conversations
           </div>
-          <button className="w-full text-left px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/40 text-sm text-zinc-200 flex items-center gap-2 cursor-pointer">
-            <MessageSquare className="w-4 h-4 text-cyan-400" />
-            <span className="truncate">General Workspace</span>
-          </button>
+          {conversations.map((conv) => {
+            const isActive = conv.id === activeConvId;
+            return (
+              <button
+                key={conv.id}
+                onClick={() => setActiveConvId(conv.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors cursor-pointer truncate ${
+                  isActive
+                    ? "bg-zinc-800 border border-zinc-700/80 text-white font-medium"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 border border-transparent"
+                }`}
+              >
+                <MessageSquare
+                  className={`w-4 h-4 shrink-0 ${
+                    isActive ? "text-cyan-400" : "text-zinc-500"
+                  }`}
+                />
+                <span className="truncate">{conv.title}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/60">
@@ -195,59 +214,8 @@ const MainDashboard: React.FC = () => {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative">
-        {/* Top Header */}
-        <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-zinc-900/20 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-medium text-zinc-200">LangGraph HITL Core</h2>
-            <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              StateGraph + RAG
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  backendStatus === "online"
-                    ? "bg-emerald-500 animate-pulse"
-                    : backendStatus === "checking"
-                    ? "bg-amber-500"
-                    : "bg-rose-500"
-                }`}
-              />
-              Backend: {backendStatus}
-            </span>
-          </div>
-        </header>
-
-        {/* Messages placeholder */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col justify-center items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4 shadow-inner">
-            <Sparkles className="w-8 h-8 animate-pulse-glow" />
-          </div>
-          <h3 className="text-lg font-semibold text-white mb-2">AmbientAI Core Rebuild</h3>
-          <p className="text-sm text-zinc-400 max-w-md">
-            Minimal resilient architecture featuring native WebSockets, LangGraph checkpointing, and pgvector RAG.
-          </p>
-        </div>
-
-        {/* Input Bar Placeholder */}
-        <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40">
-          <div className="max-w-4xl mx-auto flex items-center gap-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 p-2 focus-within:border-cyan-500 transition-colors">
-            <input
-              type="text"
-              placeholder="Ask a question or request a task..."
-              className="flex-1 bg-transparent px-3 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none"
-            />
-            <button
-              onClick={() => toast("Input wired in Phase 4")}
-              className="p-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-medium transition-colors cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative overflow-hidden">
+        <ChatWindow key={activeConvId} conversationId={activeConvId} />
       </main>
     </div>
   );

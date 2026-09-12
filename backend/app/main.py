@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
+from app.api.retrieval import router as retrieval_router
 from app.core.config import get_settings
 from app.db.session import init_db
+from app.ws.router import router as ws_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +49,9 @@ def create_app() -> FastAPI:
     # API Routers
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+    app.include_router(retrieval_router, prefix="/api/retrieval", tags=["Retrieval"])
+    app.include_router(retrieval_router, prefix="/retrieval", tags=["Retrieval"])
+    app.include_router(ws_router, tags=["WebSockets"])
 
     @app.get("/", tags=["General"])
     async def root():
