@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.auth import router as auth_router
 from app.core.config import get_settings
+from app.db.session import init_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +20,10 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} in [{settings.ENVIRONMENT}] mode...")
+    try:
+        await init_db()
+    except Exception as e:
+        logger.error(f"Error initializing database during startup: {e}")
     yield
     logger.info(f"Shutting down {settings.APP_NAME}...")
 
@@ -37,6 +43,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # API Routers
+    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 
     @app.get("/", tags=["General"])
     async def root():
