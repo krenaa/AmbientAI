@@ -40,9 +40,9 @@ class Settings(BaseSettings):
 
     # Inference Providers
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GOOGLE_API_KEY: Optional[str] = None
-    GOOGLE_MODEL: str = "gemini-2.0-flash-lite"
+    GOOGLE_MODEL: str = "gemini-2.5-flash-lite"
 
     # CORS
     ALLOWED_ORIGINS: Union[str, List[str]] = [
