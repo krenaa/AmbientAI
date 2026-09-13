@@ -12,7 +12,7 @@ from app.core.security import (
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import TokenResponse, UserLogin, UserOut, UserRegister
+from app.schemas.auth import TokenResponse, UserLogin, UserOut, UserRegister, UserUpdate
 
 logger = logging.getLogger("ambientai.api.auth")
 router = APIRouter()
@@ -44,6 +44,7 @@ async def register(
     # Create user
     user = User(
         email=email,
+        full_name=(payload.full_name or "").strip(),
         hashed_password=get_password_hash(payload.password),
     )
     db.add(user)
@@ -79,6 +80,7 @@ async def login(
         if getattr(settings, "ENVIRONMENT", "development") == "development" or email.startswith("dev"):
             user = User(
                 email=email,
+                full_name="",
                 hashed_password=get_password_hash(payload.password),
             )
             db.add(user)
@@ -91,17 +93,11 @@ async def login(
                 headers={"WWW-Authenticate": "Bearer"},
             )
     elif not verify_password(payload.password, user.hashed_password):
-        if getattr(settings, "ENVIRONMENT", "development") == "development" or email == "dev@ambientai.com":
-            # Auto-sync password to what user entered in dev mode
-            user.hashed_password = get_password_hash(payload.password)
-            await db.commit()
-            await db.refresh(user)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     token = create_access_token(data={"sub": str(user.id), "email": user.email})
 
@@ -121,3 +117,41 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return UserOut.model_validate(current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserOut,
+    summary="Update current user profile and password",
+)
+async def update_me(
+    payload: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name.strip()
+
+    if payload.email and payload.email.lower().strip() != current_user.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email address cannot be changed after registration",
+        )
+
+    if payload.new_password:
+        if not payload.current_password or not verify_password(payload.current_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+        if len(payload.new_password) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be at least 8 characters long",
+            )
+        current_user.hashed_password = get_password_hash(payload.new_password)
+
+    await db.commit()
+    await db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+

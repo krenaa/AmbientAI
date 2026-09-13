@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Toaster, toast } from "react-hot-toast";
 import {
-  Bot,
   LogIn,
   UserPlus,
   LogOut,
@@ -24,24 +23,30 @@ import {
 } from "./services/api";
 import { prefetchConversationMessages } from "./hooks/useWebSocket";
 import { ChatWindow } from "./components/ChatWindow";
+import { ProfileModal } from "./components/modals/ProfileModal";
 
 const AuthView: React.FC = () => {
   const { login } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error("Please enter email and password");
+    if (!email || !password || (isRegister && !fullName.trim())) {
+      toast.error(
+        isRegister && !fullName.trim()
+          ? "Please enter your full name"
+          : "Please enter email and password"
+      );
       return;
     }
     setLoading(true);
     try {
       if (isRegister) {
-        const res = await registerUser(email, password);
+        const res = await registerUser(email, password, fullName.trim());
         login(res.access_token, res.user);
         toast.success("Account created and logged in!");
       } else {
@@ -62,18 +67,34 @@ const AuthView: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center p-4 ambient-gradient">
       <div className="w-full max-w-md rounded-2xl glass-panel p-8 shadow-2xl border border-white/10">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg mb-3">
-            <Bot className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 mb-3 flex items-center justify-center drop-shadow-sm">
+            <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">AmbientAI</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold tracking-tight text-[#1C120C]">AmbientAI</h1>
+          <p className="text-sm text-zinc-600 mt-1">
             {isRegister ? "Create a new account" : "Sign in to access your agentic workspace"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegister && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="e.g. John Doe"
+                required
+                className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
+              />
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
               Email Address
             </label>
             <input
@@ -82,12 +103,12 @@ const AuthView: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="developer@ambientai.com"
               required
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
               Password
             </label>
             <input
@@ -96,26 +117,26 @@ const AuthView: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-md hover:shadow-cyan-500/20 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold shadow-md hover:shadow-cyan-500/20 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             {loading ? (
               <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : isRegister ? (
               <>
-                <UserPlus className="w-4 h-4" />
-                <span>Register</span>
+                <UserPlus className="w-4 h-4 text-white" />
+                <span className="text-white font-semibold">Register</span>
               </>
             ) : (
               <>
-                <LogIn className="w-4 h-4" />
-                <span>Sign In</span>
+                <LogIn className="w-4 h-4 text-white" />
+                <span className="text-white font-semibold">Sign In</span>
               </>
             )}
           </button>
@@ -145,11 +166,13 @@ interface ConversationItem {
 }
 
 const MainDashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>(() => crypto.randomUUID());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const refreshConversations = async () => {
     try {
@@ -200,6 +223,7 @@ const MainDashboard: React.FC = () => {
   const handleCreateConversation = () => {
     const newDraftId = crypto.randomUUID();
     setActiveConvId(newDraftId);
+    setIsMobileSidebarOpen(false);
   };
 
   // When prompt is entered and run: add to sidebar named according to its reference
@@ -276,42 +300,59 @@ const MainDashboard: React.FC = () => {
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 relative">
+      {/* Mobile Backdrop Overlay */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 md:hidden transition-opacity duration-200"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar with previous version Agent Studio aesthetic */}
-      <aside className="w-64 border-r border-zinc-800/80 bg-zinc-900/50 flex flex-col shrink-0">
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 border-r border-zinc-800/80 bg-zinc-900/95 md:bg-zinc-900/50 flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out ${
+          isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
         {/* Studio Branding */}
         <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/20 shrink-0">
-              <Bot className="w-4 h-4" />
+            <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+              <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm tracking-tight text-white">AmbientAI</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-zinc-800 text-cyan-400 border border-zinc-700/60 uppercase">
+              <span className="font-bold text-sm tracking-tight text-[#1C120C]">AmbientAI</span>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-zinc-800 text-[#183E6C] border border-zinc-700/60 uppercase">
                 STUDIO
               </span>
             </div>
           </div>
+          <button
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="p-1.5 rounded-lg text-zinc-600 hover:text-[#1C120C] md:hidden cursor-pointer"
+            title="Close Sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* New Session Button */}
         <div className="p-3 border-b border-zinc-800/60">
           <button
             onClick={handleCreateConversation}
-            className="w-full py-2.5 px-3 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 border border-zinc-700/80 hover:border-cyan-500/50 text-white text-xs font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer group"
+            className="w-full py-2.5 px-3 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 border border-zinc-700/80 hover:border-[#183E6C] text-[#1C120C] text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer group"
           >
-            <PlusCircle className="w-4 h-4 text-cyan-400 group-hover:rotate-90 transition-transform duration-200" />
+            <PlusCircle className="w-4 h-4 text-[#183E6C] group-hover:rotate-90 transition-transform duration-200" />
             <span>+ New Session</span>
           </button>
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          <div className="flex items-center justify-between px-2 py-1 mb-1">
-            <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              Agent Sessions
-            </span>
-            <span className="text-[10px] text-zinc-500 font-mono">
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 scrollbar-thin">
+          <div className="px-2 py-1 flex items-center justify-between text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+            <span>Agent Sessions</span>
+            <span className="text-[10px] lowercase text-zinc-400 font-mono">
               {conversations.length} total
             </span>
           </div>
@@ -359,30 +400,36 @@ const MainDashboard: React.FC = () => {
             return (
               <div
                 key={conv.id}
-                onClick={() => setActiveConvId(conv.id)}
-                className={`group w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between transition-all cursor-pointer truncate ${
+                onClick={() => {
+                  setActiveConvId(conv.id);
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`group relative w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium flex items-center transition-colors cursor-pointer ${
                   isActive
-                    ? "bg-zinc-800/90 border border-zinc-700/90 text-white font-medium shadow-sm ring-1 ring-cyan-500/20"
-                    : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200 border border-transparent"
+                    ? "bg-zinc-800/90 border border-zinc-700/90 text-[#1C120C] font-bold shadow-sm ring-1 ring-[#183E6C]/30"
+                    : "text-zinc-600 hover:bg-zinc-800/60 hover:text-[#1C120C] border border-transparent"
                 }`}
               >
-                <div className="flex items-center gap-2 truncate pr-2">
+                {/* Left Icon */}
+                <div className="shrink-0 mr-2 flex items-center">
                   {conv.has_pdf ? (
-                    <div className="shrink-0 flex items-center" title={`PDF attached: ${conv.pdf_name || "Document"}`}>
-                      <FileText
-                        className={`w-3.5 h-3.5 ${
-                          isActive ? "text-purple-400" : "text-purple-400/90 group-hover:text-purple-300"
-                        }`}
-                      />
-                    </div>
+                    <FileText
+                      className={`w-3.5 h-3.5 ${
+                        isActive ? "text-purple-400" : "text-purple-400/90 group-hover:text-purple-300"
+                      }`}
+                    />
                   ) : (
                     <MessageSquare
-                      className={`w-3.5 h-3.5 shrink-0 ${
+                      className={`w-3.5 h-3.5 ${
                         isActive ? "text-cyan-400" : "text-zinc-500 group-hover:text-zinc-400"
                       }`}
                     />
                   )}
-                  <span className="truncate">{conv.title}</span>
+                </div>
+
+                {/* Title Container - fixed right padding so text never shifts width on hover */}
+                <div className="flex-1 min-w-0 pr-12 flex items-center gap-1.5 overflow-hidden">
+                  <span className="truncate block leading-tight">{conv.title}</span>
                   {conv.has_pdf && (
                     <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-tight shrink-0">
                       PDF
@@ -390,10 +437,11 @@ const MainDashboard: React.FC = () => {
                   )}
                 </div>
 
+                {/* Action Buttons - Absolute positioned with fade transition, zero width reflow */}
                 <div
-                  className={`${
-                    isActive ? "flex" : "hidden group-hover:flex"
-                  } items-center gap-1 shrink-0`}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity duration-150 ${
+                    isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
                 >
                   <button
                     onClick={(e) => handleStartRename(conv, e)}
@@ -415,19 +463,30 @@ const MainDashboard: React.FC = () => {
           })}
         </div>
 
-        {/* User Footer */}
+        {/* User Footer - Clickable to open Profile & Account Edit Modal */}
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/60">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 truncate pr-2">
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="flex-1 flex items-center gap-2 truncate pr-2 text-left group hover:opacity-80 transition-opacity cursor-pointer"
+              title="Click to view & edit your profile"
+            >
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <div className="flex flex-col truncate">
-                <span className="text-xs text-zinc-300 font-medium truncate">{user?.email}</span>
-                <span className="text-[10px] text-zinc-500">Core v1.0.0 • Online</span>
+              <div className="flex flex-col truncate min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-zinc-200 font-semibold truncate group-hover:text-cyan-400 transition-colors">
+                    {user?.full_name || user?.email}
+                  </span>
+                  <Pencil className="w-2.5 h-2.5 text-zinc-400 opacity-60 group-hover:opacity-100 group-hover:text-cyan-400 transition-all shrink-0" />
+                </div>
+                <span className="text-[10px] text-zinc-400 truncate">
+                  {user?.full_name ? user.email : "Core v1.0.0 • Click to edit"}
+                </span>
               </div>
-            </div>
+            </button>
             <button
               onClick={logout}
-              className="p-1.5 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition-colors cursor-pointer shrink-0"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -437,7 +496,7 @@ const MainDashboard: React.FC = () => {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative overflow-hidden">
+      <main className="flex-1 flex flex-col h-full bg-zinc-950 relative overflow-hidden min-w-0">
         <ChatWindow
           key={activeConvId}
           conversationId={activeConvId}
@@ -446,8 +505,24 @@ const MainDashboard: React.FC = () => {
           onDelete={() => handleDeleteConversation(activeConvId)}
           onMessageSent={handleMessageSent}
           onDocumentUploaded={refreshConversations}
+          onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
         />
       </main>
+
+      {/* Profile & Account Edit Modal Popup */}
+      {showProfileModal && (
+        <ProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          user={user as any}
+          onLogout={logout}
+          onProfileUpdated={(updated) => {
+            if (updateUser) {
+              updateUser(updated as any);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

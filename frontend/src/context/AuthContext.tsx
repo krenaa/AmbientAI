@@ -8,6 +8,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  updateUser: (updatedFields: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,6 +34,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem("ambient_user");
   };
 
+  const updateUser = (updatedFields: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updatedFields };
+      localStorage.setItem("ambient_user", JSON.stringify(updated));
+      sessionStorage.setItem("ambient_user", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   useEffect(() => {
     const storedToken = localStorage.getItem("ambient_token");
     const storedUser = localStorage.getItem("ambient_user");
@@ -54,6 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isAuthenticated: !!token,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}

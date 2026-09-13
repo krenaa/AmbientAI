@@ -26,7 +26,7 @@ export const apiClient = axios.create({
 
 // Attach Bearer token to all outgoing requests
 apiClient.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem("ambient_token");
+  const token = localStorage.getItem("ambient_token") || sessionStorage.getItem("ambient_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -62,8 +62,10 @@ export const register = async (
   const token = res.data.access;
   const user = res.data.user;
   sessionStorage.setItem("ambient_token", token);
+  localStorage.setItem("ambient_token", token);
   if (user) {
     sessionStorage.setItem("ambient_user", JSON.stringify(user));
+    localStorage.setItem("ambient_user", JSON.stringify(user));
   }
   return { token, user };
 };
@@ -76,15 +78,18 @@ export const login = async (
   const token = res.data.access;
   const user = res.data.user;
   sessionStorage.setItem("ambient_token", token);
+  localStorage.setItem("ambient_token", token);
   if (user) {
     sessionStorage.setItem("ambient_user", JSON.stringify(user));
+    localStorage.setItem("ambient_user", JSON.stringify(user));
   }
   return { token, user };
 };
 
 export const fetchCurrentUser = async () => {
-  const res = await apiClient.get("/auth/me/");
+  const res = await apiClient.get("/auth/me");
   sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
+  localStorage.setItem("ambient_user", JSON.stringify(res.data));
   return res.data;
 };
 
@@ -94,8 +99,11 @@ export const updateProfile = async (data: {
   current_password?: string;
   new_password?: string;
 }) => {
-  const res = await apiClient.patch("/auth/me/", data);
-  sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
+  const res = await apiClient.patch("/auth/me", data);
+  if (res.data) {
+    sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
+    localStorage.setItem("ambient_user", JSON.stringify(res.data));
+  }
   return res.data;
 };
 

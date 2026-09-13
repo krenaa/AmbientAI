@@ -60,6 +60,7 @@ async def init_db() -> None:
             await conn.run_sync(Base.metadata.create_all)
             # Ensure schema migrations for existing tables
             try:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255) DEFAULT '';"))
                 await conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS has_pdf BOOLEAN DEFAULT FALSE;"))
                 await conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pdf_name VARCHAR(255);"))
             except Exception as e:

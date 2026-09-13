@@ -24,8 +24,16 @@ export const checkHealth = async (): Promise<{ status: string; service: string }
   return res.data;
 };
 
-export const registerUser = async (email: string, password: string): Promise<AuthResponse> => {
-  const res = await apiClient.post("/api/auth/register", { email, password });
+export const registerUser = async (
+  email: string,
+  password: string,
+  fullName?: string
+): Promise<AuthResponse> => {
+  const res = await apiClient.post("/api/auth/register", {
+    email,
+    password,
+    full_name: fullName || "",
+  });
   return res.data;
 };
 
