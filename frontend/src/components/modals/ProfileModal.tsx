@@ -19,6 +19,7 @@ import {
 import type { UserProfile } from "../../types";
 import { updateProfile } from "../../api";
 import { useToast } from "../../Toast";
+import { validateFullName, getDeterministicAvatar } from "../../utils/avatar";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -63,10 +64,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setAccountError(null);
+
+    const validation = validateFullName(fullName);
+    if (!validation.isValid) {
+      setAccountError(validation.error || "Please enter a valid full name.");
+      return;
+    }
+
     setIsSavingAccount(true);
     try {
       const res = await updateProfile({
-        full_name: fullName.trim(),
+        full_name: validation.formattedName || fullName.trim(),
       });
       if (onProfileUpdated) onProfileUpdated(res);
       showToast("Profile details updated successfully.", "success");
@@ -108,6 +116,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   const isAdmin = user.is_staff || user.role === "Admin";
+  const avatar = getDeterministicAvatar(user.full_name, user.email);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -124,8 +133,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
         {/* User Identity Header */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-[#183E6C] border border-[#102B4F] flex items-center justify-center text-white font-bold text-base shadow-sm">
-            {user.full_name ? user.full_name[0].toUpperCase() : user.email[0].toUpperCase()}
+          <div
+            style={{ backgroundColor: avatar.bg, borderColor: avatar.border, color: avatar.text }}
+            className="w-11 h-11 rounded-xl border flex items-center justify-center font-bold text-sm shadow-sm shrink-0"
+          >
+            {avatar.initials}
           </div>
           <div>
             <div className="flex items-center gap-2">

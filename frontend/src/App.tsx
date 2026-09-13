@@ -24,6 +24,7 @@ import {
 import { prefetchConversationMessages } from "./hooks/useWebSocket";
 import { ChatWindow } from "./components/ChatWindow";
 import { ProfileModal } from "./components/modals/ProfileModal";
+import { validateFullName, getDeterministicAvatar } from "./utils/avatar";
 
 const AuthView: React.FC = () => {
   const { login } = useAuth();
@@ -43,10 +44,20 @@ const AuthView: React.FC = () => {
       );
       return;
     }
+    if (isRegister) {
+      const validation = validateFullName(fullName);
+      if (!validation.isValid) {
+        toast.error(validation.error || "Please enter your real full name.");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (isRegister) {
-        const res = await registerUser(email, password, fullName.trim());
+        const validation = validateFullName(fullName);
+        const nameToSave = validation.formattedName || fullName.trim();
+        const res = await registerUser(email, password, nameToSave);
         login(res.access_token, res.user);
         toast.success("Account created and logged in!");
       } else {
@@ -102,6 +113,7 @@ const AuthView: React.FC = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="developer@ambientai.com"
+              autoComplete={isRegister ? "off" : "username"}
               required
               className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
             />
@@ -116,6 +128,7 @@ const AuthView: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete={isRegister ? "new-password" : "current-password"}
               required
               className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
             />
@@ -145,7 +158,12 @@ const AuthView: React.FC = () => {
         <div className="mt-6 text-center">
           <button
             type="button"
-            onClick={() => setIsRegister(!isRegister)}
+            onClick={() => {
+              setIsRegister(!isRegister);
+              setEmail("");
+              setPassword("");
+              setFullName("");
+            }}
             className="text-sm text-cyan-400 hover:text-cyan-300 font-medium transition-colors cursor-pointer"
           >
             {isRegister
@@ -421,7 +439,7 @@ const MainDashboard: React.FC = () => {
                   ) : (
                     <MessageSquare
                       className={`w-3.5 h-3.5 ${
-                        isActive ? "text-cyan-400" : "text-zinc-500 group-hover:text-zinc-400"
+                        isActive ? "text-purple-400" : "text-purple-400/90 group-hover:text-purple-300"
                       }`}
                     />
                   )}
@@ -468,10 +486,19 @@ const MainDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <button
               onClick={() => setShowProfileModal(true)}
-              className="flex-1 flex items-center gap-2 truncate pr-2 text-left group hover:opacity-80 transition-opacity cursor-pointer"
+              className="flex-1 flex items-center gap-2.5 truncate pr-2 text-left group hover:opacity-80 transition-opacity cursor-pointer"
               title="Click to view & edit your profile"
             >
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <div
+                style={{
+                  backgroundColor: getDeterministicAvatar(user?.full_name, user?.email).bg,
+                  borderColor: getDeterministicAvatar(user?.full_name, user?.email).border,
+                  color: getDeterministicAvatar(user?.full_name, user?.email).text,
+                }}
+                className="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs"
+              >
+                {getDeterministicAvatar(user?.full_name, user?.email).initials}
+              </div>
               <div className="flex flex-col truncate min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-zinc-200 font-semibold truncate group-hover:text-cyan-400 transition-colors">

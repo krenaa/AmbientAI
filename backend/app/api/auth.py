@@ -12,7 +12,14 @@ from app.core.security import (
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import TokenResponse, UserLogin, UserOut, UserRegister, UserUpdate
+from app.schemas.auth import (
+    TokenResponse,
+    UserLogin,
+    UserOut,
+    UserRegister,
+    UserUpdate,
+    derive_name_from_email,
+)
 
 logger = logging.getLogger("ambientai.api.auth")
 router = APIRouter()
@@ -42,9 +49,10 @@ async def register(
         )
 
     # Create user
+    full_name = (payload.full_name or "").strip() or derive_name_from_email(email)
     user = User(
         email=email,
-        full_name=(payload.full_name or "").strip(),
+        full_name=full_name,
         hashed_password=get_password_hash(payload.password),
     )
     db.add(user)
@@ -80,7 +88,7 @@ async def login(
         if getattr(settings, "ENVIRONMENT", "development") == "development" or email.startswith("dev"):
             user = User(
                 email=email,
-                full_name="",
+                full_name=derive_name_from_email(email),
                 hashed_password=get_password_hash(payload.password),
             )
             db.add(user)
