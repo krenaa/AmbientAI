@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
+from app.api.conversations import router as conversations_router
 from app.api.retrieval import router as retrieval_router
 from app.core.config import get_settings
 from app.db.session import init_db
@@ -48,8 +49,13 @@ def create_app() -> FastAPI:
 
     # API Routers
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(auth_router, prefix="/api/api/auth", tags=["Authentication"])
     app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+    app.include_router(conversations_router, prefix="/api/conversations", tags=["Conversations"])
+    app.include_router(conversations_router, prefix="/api/api/conversations", tags=["Conversations"])
+    app.include_router(conversations_router, prefix="/conversations", tags=["Conversations"])
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["Retrieval"])
+    app.include_router(retrieval_router, prefix="/api/api/retrieval", tags=["Retrieval"])
     app.include_router(retrieval_router, prefix="/retrieval", tags=["Retrieval"])
     app.include_router(ws_router, tags=["WebSockets"])
 

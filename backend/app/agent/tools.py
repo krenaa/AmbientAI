@@ -5,9 +5,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Tuple, Optional, Dict, Any
 from langchain_core.tools import tool
+import os
 from tavily import TavilyClient
-from app.config import get_settings
-from app.agent.vector_store import get_vector_store
+try:
+    from app.core.config import get_settings
+except ImportError:
+    from app.config import get_settings
 
 logger = logging.getLogger("ambientdesk.tools")
 settings = get_settings()
@@ -20,12 +23,13 @@ def web_search(query: str) -> str:
     Args:
         query: The targeted search query string.
     """
-    if not settings.TAVILY_API_KEY:
+    tavily_key = getattr(settings, "TAVILY_API_KEY", None) or os.getenv("TAVILY_API_KEY")
+    if not tavily_key:
         return "Search tool is unavailable: TAVILY_API_KEY is not configured."
 
     try:
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        response = client.search(query=query, max_results=3, search_depth="basic")
+        client = TavilyClient(api_key=tavily_key)
+        response = client.search(query=query, max_results=5, search_depth="basic")
 
         results = response.get("results", [])
         if not results:
@@ -36,9 +40,9 @@ def web_search(query: str) -> str:
             title = r.get("title", "No Title")
             url = r.get("url", "")
             content = r.get("content", "")
-            sanitized_content = content[:350].replace("```", "'''")
+            sanitized_content = content[:400].replace("```", "'''")
             formatted_results.append(
-                f"Source: {title}\nURL: {url}\nSnippet: {sanitized_content}\n"
+                f"Source: [{title}]({url})\nURL: {url}\nSnippet: {sanitized_content}\n"
             )
 
         return "\n---\n".join(formatted_results)

@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     approval_prompt: Optional[str]
     approval_status: Optional[str]  # "pending", "approved", "rejected"
     action_type: Optional[str]
+    stream_handled: Optional[bool]

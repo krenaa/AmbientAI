@@ -77,7 +77,9 @@ def human_approval(state: AgentState) -> Dict[str, Any]:
 
 
 def generate_response(state: AgentState) -> Dict[str, Any]:
-    """Standard node calling LLM directly when no approval is required."""
+    """Standard node calling LLM directly when no approval is required and streaming is not external."""
+    if state.get("stream_handled"):
+        return {}
     llm = get_llm()
     response = llm.invoke(state["messages"])
     return {"messages": [response]}

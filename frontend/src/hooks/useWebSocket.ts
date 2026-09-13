@@ -1,14 +1,58 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import type { Message, StreamTokenPayload } from "../types";
+import { API_BASE_URL, getMessages } from "../services/api";
 
 export interface HITLApprovalState {
   taskId: string;
   prompt: string;
 }
 
+// Module-level in-memory cache + session storage for instant 0ms switching
+const messagesCache = new Map<string, Message[]>();
+const CACHE_PREFIX = "ambient_chat_cache_";
+
+export function getCachedMessages(convId: string): Message[] {
+  if (messagesCache.has(convId)) {
+    return messagesCache.get(convId)!;
+  }
+  try {
+    const stored = sessionStorage.getItem(CACHE_PREFIX + convId);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        messagesCache.set(convId, parsed);
+        return parsed;
+      }
+    }
+  } catch {}
+  return [];
+}
+
+export function setCachedMessages(convId: string, msgs: Message[]) {
+  messagesCache.set(convId, msgs);
+  try {
+    sessionStorage.setItem(CACHE_PREFIX + convId, JSON.stringify(msgs));
+  } catch {}
+}
+
+export async function prefetchConversationMessages(convId: string): Promise<void> {
+  if (messagesCache.has(convId)) return;
+  try {
+    const history = await getMessages(convId);
+    if (history && Array.isArray(history)) {
+      setCachedMessages(convId, history);
+    }
+  } catch {}
+}
+
 export function useWebSocket(conversationId: string) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    return getCachedMessages(conversationId);
+  });
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(() => {
+    return !messagesCache.has(conversationId) && getCachedMessages(conversationId).length === 0;
+  });
   const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -18,20 +62,71 @@ export function useWebSocket(conversationId: string) {
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const connect = useCallback(() => {
+  const updateMessages = useCallback(
+    (updater: Message[] | ((prev: Message[]) => Message[])) => {
+      setMessages((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        setCachedMessages(conversationId, next);
+        return next;
+      });
+    },
+    [conversationId]
+  );
+
+  // Load past messages when conversationId changes
+  useEffect(() => {
+    let isMounted = true;
     if (!conversationId) return;
 
-    // Use environment variable or fallback to localhost:8000
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    const wsBaseUrl = apiUrl.replace(/^http/, "ws");
-    const wsUrl = `${wsBaseUrl}/ws/chat/${conversationId}`;
+    // If already in cache, ensure state is set immediately
+    const cached = messagesCache.get(conversationId);
+    if (cached && cached.length > 0) {
+      setMessages(cached);
+      setIsLoadingHistory(false);
+    } else {
+      setIsLoadingHistory(true);
+    }
+
+    getMessages(conversationId)
+      .then((history) => {
+        if (isMounted && history && Array.isArray(history)) {
+          updateMessages(history);
+        }
+      })
+      .catch((err) => {
+        console.debug("No historical messages found or error loading history:", err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingHistory(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [conversationId, updateMessages]);
+
+  const connect = useCallback(() => {
+    // Use normalized base URL with auth token query param
+    const token = localStorage.getItem("ambient_token");
+    const wsBaseUrl = API_BASE_URL.replace(/^http/, "ws");
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+    const wsUrl = `${wsBaseUrl}/ws/chat/${conversationId}${tokenParam}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setIsConnected(true);
-      toast.success("Connected to AmbientAI Agent", { id: "ws-status" });
+      // Background sync on connection
+      getMessages(conversationId)
+        .then((history) => {
+          if (history && Array.isArray(history)) {
+            updateMessages(history);
+          }
+        })
+        .catch(() => {});
     };
 
     ws.onclose = () => {
@@ -53,7 +148,7 @@ export function useWebSocket(conversationId: string) {
         // Status update
         if (payload.type === "status") {
           setIsProcessing(true);
-          setStatusMessage(payload.content || "Processing...");
+          setStatusMessage(payload.content || "AmbientAI is thinking...");
         }
 
         // Streaming token
@@ -62,7 +157,7 @@ export function useWebSocket(conversationId: string) {
           setStatusMessage(null);
 
           const token = payload.content;
-          setMessages((prev) => {
+          updateMessages((prev) => {
             const lastMsg = prev[prev.length - 1];
             if (lastMsg && lastMsg.role === "assistant" && lastMsg.id === activeAssistantMessageIdRef.current) {
               return [
@@ -119,7 +214,7 @@ export function useWebSocket(conversationId: string) {
         console.error("Failed to parse WebSocket message:", err);
       }
     };
-  }, [conversationId]);
+  }, [conversationId, updateMessages]);
 
   useEffect(() => {
     connect();
@@ -144,9 +239,9 @@ export function useWebSocket(conversationId: string) {
         created_at: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, userMsg]);
+      updateMessages((prev) => [...prev, userMsg]);
       setIsProcessing(true);
-      setStatusMessage("Sending...");
+      setStatusMessage("AmbientAI is thinking...");
       activeAssistantMessageIdRef.current = null;
 
       wsRef.current.send(
@@ -157,7 +252,7 @@ export function useWebSocket(conversationId: string) {
         })
       );
     },
-    [conversationId]
+    [conversationId, updateMessages]
   );
 
   const sendApproval = useCallback(
@@ -191,6 +286,7 @@ export function useWebSocket(conversationId: string) {
 
   return {
     messages,
+    isLoadingHistory,
     isConnected,
     isProcessing,
     statusMessage,

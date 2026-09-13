@@ -8,6 +8,10 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = "New Conversation"
 
 
+class ConversationUpdate(BaseModel):
+    title: str
+
+
 class ConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
