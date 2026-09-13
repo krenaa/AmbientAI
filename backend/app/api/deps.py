@@ -1,5 +1,5 @@
 import uuid
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
@@ -44,3 +44,29 @@ async def get_current_user(
         raise credentials_exception
 
     return user
+
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+async def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Retrieves authenticated user if valid token exists, otherwise returns None without erroring."""
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        if not payload or not payload.get("sub"):
+            return None
+        user_identifier: str = payload.get("sub")
+        try:
+            user_uuid = uuid.UUID(user_identifier)
+            stmt = select(User).where(User.id == user_uuid)
+        except ValueError:
+            stmt = select(User).where(User.email == user_identifier)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+    except Exception:
+        return None

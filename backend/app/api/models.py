@@ -4,7 +4,11 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter
 import httpx
 from pydantic import BaseModel
-from app.config import get_settings
+import datetime
+try:
+    from app.core.config import get_settings
+except ImportError:
+    from app.config import get_settings
 from app.agent.llm import _extract_keys, GROQ_FALLBACK_MODELS
 
 logger = logging.getLogger("ambientdesk.api.models")
@@ -24,6 +28,7 @@ class ModelOption(BaseModel):
 
 class ModelsResponse(BaseModel):
     selected_default: str
+    timestamp: str = ""
     models: List[ModelOption]
 
 
@@ -37,6 +42,8 @@ GROQ_NAME_MAP: Dict[str, str] = {
     "deepseek-r1-distill-llama-70b": "DeepSeek R1 Distill 70B",
     "qwen-2.5-32b": "Qwen 2.5 32B",
     "qwen-2.5-coder-32b": "Qwen 2.5 Coder 32B",
+    "openai/gpt-oss-20b": "GPT-OSS 20B (OpenAI)",
+    "openai/gpt-oss-120b": "GPT-OSS 120B (OpenAI)",
 }
 
 # Non-chat models or decommissioned model substrings to exclude
@@ -46,6 +53,8 @@ EXCLUDED_MODEL_SUBSTRINGS = ["whisper", "guard", "tts", "embedding", "audio", "v
 def format_groq_name(model_id: str) -> str:
     if model_id in GROQ_NAME_MAP:
         return GROQ_NAME_MAP[model_id]
+    if model_id.startswith("openai/"):
+        return f"GPT-OSS {model_id.replace('openai/', '').replace('gpt-oss-', '').upper()} (OpenAI)"
     # Format fallback: capitalize hyphenated names
     clean = model_id.replace("-", " ").replace("_", " ").title()
     return clean
@@ -79,7 +88,7 @@ async def fetch_live_groq_models(api_key: str) -> List[dict]:
 @router.get("", response_model=ModelsResponse)
 async def list_available_models():
     """Real-time Groq model discovery endpoint. Returns only currently active Groq models."""
-    groq_keys = _extract_keys(settings.GROQ_API_KEY, settings.GROQ_API_KEYS)
+    groq_keys = _extract_keys(settings.GROQ_API_KEY, getattr(settings, "GROQ_API_KEYS", None))
     models: List[ModelOption] = []
 
     live_groq_items: List[dict] = []
@@ -126,13 +135,38 @@ async def list_available_models():
             )
         )
 
-    # Auto Fallback option across active Groq models
+    # Add Gemini model options if configured
+    if settings.GOOGLE_API_KEY:
+        models.append(
+            ModelOption(
+                id="gemini-2.5-flash-lite",
+                name="Google Gemini 2.5 Flash Lite",
+                provider="Google AI",
+                is_free=True,
+                is_available=True,
+                status="🟢 Active",
+                badge="1M Tokens",
+            )
+        )
+        models.append(
+            ModelOption(
+                id="gemini-1.5-flash",
+                name="Google Gemini 1.5 Flash",
+                provider="Google AI",
+                is_free=True,
+                is_available=True,
+                status="🟢 Active",
+                badge="Multimodal",
+            )
+        )
+
+    # Auto Fallback option across active models
     models.insert(
         0,
         ModelOption(
             id="auto",
-            name="⚡ Auto Fallback (Groq Fast Cascade)",
-            provider="Groq High-Speed",
+            name="⚡ Auto Fallback (Resilient Multi-Model)",
+            provider="Auto High-Speed",
             is_free=True,
             is_available=True,
             status="🟢 Active",
@@ -141,7 +175,16 @@ async def list_available_models():
     )
 
     # Set best default
-    default_choice = "llama-3.3-70b-versatile" if "llama-3.3-70b-versatile" in ordered_model_ids else (ordered_model_ids[0] if ordered_model_ids else "auto")
+    default_choice = (
+        "llama-3.3-70b-versatile"
+        if "llama-3.3-70b-versatile" in ordered_model_ids
+        else (ordered_model_ids[0] if ordered_model_ids else "auto")
+    )
 
-    return ModelsResponse(selected_default=default_choice, models=models)
+    current_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return ModelsResponse(
+        selected_default=default_choice,
+        timestamp=current_ts,
+        models=models,
+    )
 

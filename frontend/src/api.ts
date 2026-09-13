@@ -1,5 +1,5 @@
 import axios, { type AxiosError } from "axios";
-import type { AgentTask } from "./types";
+import type { AgentTask, ModelsResponse } from "./types";
 
 const getApiBase = (): string => {
   let base = (import.meta.env.VITE_API_URL || "").trim();
@@ -132,7 +132,7 @@ export const createTask = async (
   return res.data;
 };
 
-export const fetchAvailableModels = async (): Promise<{ selected_default: string; models: import("./types").ModelOption[] }> => {
+export const fetchAvailableModels = async (): Promise<ModelsResponse> => {
   try {
     const res = await apiClient.get("/models/");
     return res.data;
@@ -175,9 +175,12 @@ export const deleteTask = async (taskId: string): Promise<void> => {
   await apiClient.delete(`/tasks/${taskId}/`);
 };
 
-export const uploadKnowledgeFile = async (file: File): Promise<any> => {
+export const uploadKnowledgeFile = async (file: File, conversationId?: string): Promise<any> => {
   const formData = new FormData();
   formData.append("file", file);
+  if (conversationId) {
+    formData.append("conversation_id", conversationId);
+  }
   const res = await apiClient.post("/knowledge/upload", formData, {
     headers: {
       "Content-Type": "multipart/form-data",

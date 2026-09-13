@@ -41,14 +41,30 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+_db_initialized = False
+
+
 async def init_db() -> None:
     """Ensure pgvector extension is enabled and initialize tables."""
-    import app.models  # noqa: F401 - register models with Base.metadata
-    async with engine.begin() as conn:
-        try:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            logger.info("pgvector extension verified.")
-        except Exception as e:
-            logger.warning(f"Note on pgvector extension creation: {e}")
-        await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database schemas and tables verified.")
+    global _db_initialized
+    if _db_initialized:
+        return
+    try:
+        import app.models  # noqa: F401 - register models with Base.metadata
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                logger.info("pgvector extension verified.")
+            except Exception as e:
+                logger.warning(f"Note on pgvector extension creation: {e}")
+            await conn.run_sync(Base.metadata.create_all)
+            # Ensure schema migrations for existing tables
+            try:
+                await conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS has_pdf BOOLEAN DEFAULT FALSE;"))
+                await conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pdf_name VARCHAR(255);"))
+            except Exception as e:
+                logger.debug(f"Column migration check note: {e}")
+            _db_initialized = True
+            logger.info("Database schemas and tables verified.")
+    except Exception as e:
+        logger.warning(f"Database background verification note: {e}")

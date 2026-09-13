@@ -17,6 +17,8 @@ export interface Conversation {
   id: string;
   user_id: string;
   title: string;
+  has_pdf?: boolean;
+  pdf_name?: string;
   created_at: string;
 }
 
@@ -50,12 +52,16 @@ export interface AuthResponse {
 }
 
 export interface StreamTokenPayload {
-  type: "token" | "status" | "interrupt" | "complete" | "error";
+  type: "token" | "status" | "interrupt" | "complete" | "error" | "model_fallback";
   content?: string;
   task_id?: string;
   status?: TaskStatus;
   prompt?: string;
   error?: string;
+  failed_model?: string;
+  suggested_model?: string;
+  suggested_name?: string;
+  message?: string;
 }
 
 // Transitional types for existing UI components
@@ -114,9 +120,11 @@ export interface ModelOption {
   is_available: boolean;
   status?: string;
   badge: string;
+  is_default?: boolean;
 }
 
 export interface ModelsResponse {
   selected_default: string;
+  timestamp?: string;
   models: ModelOption[];
 }

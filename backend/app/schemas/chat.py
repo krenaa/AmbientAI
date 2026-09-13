@@ -18,6 +18,8 @@ class ConversationOut(BaseModel):
     id: UUID
     user_id: UUID
     title: str
+    has_pdf: Optional[bool] = False
+    pdf_name: Optional[str] = None
     created_at: datetime
 
 

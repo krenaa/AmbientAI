@@ -1,20 +1,26 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send,
   FileText,
-  Upload,
   MessageSquare,
   Pencil,
   Trash2,
   Check,
   X,
   Loader2,
+  Paperclip,
+  Cpu,
+  ChevronDown,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { MessageList } from "./MessageList";
 import { ApprovalPrompt } from "./ApprovalPrompt";
-import { ingestDocument } from "../services/api";
+import { KnowledgeModal } from "./modals/KnowledgeModal";
+import { fetchAvailableModels } from "../api";
+import type { ModelOption } from "../types";
 
 interface ChatWindowProps {
   conversationId: string;
@@ -22,6 +28,7 @@ interface ChatWindowProps {
   onRename?: (newTitle: string) => void;
   onDelete?: () => void;
   onMessageSent?: (conversationId: string, promptText: string) => void;
+  onDocumentUploaded?: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -30,17 +37,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onRename,
   onDelete,
   onMessageSent,
+  onDocumentUploaded,
 }) => {
   const [inputText, setInputText] = useState("");
-  const [showIngestModal, setShowIngestModal] = useState(false);
-  const [ingestText, setIngestText] = useState("");
-  const [isIngesting, setIsIngesting] = useState(false);
+  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [headerTitle, setHeaderTitle] = useState(conversationTitle || "New Chat");
 
+  // Dynamic Models State
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("llama-3.3-70b-versatile");
+  const [modelsTimestamp, setModelsTimestamp] = useState<string | null>(null);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setHeaderTitle(conversationTitle || "New Chat");
-  }, [conversationTitle]);
+  }, conversationTitle ? [conversationTitle] : []);
 
   const handleSaveHeaderTitle = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -49,6 +63,52 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
     setIsEditingTitle(false);
   };
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    if (isModelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isModelDropdownOpen]);
+
+  // Load models from API
+  const loadModels = useCallback(async () => {
+    setIsLoadingModels(true);
+    try {
+      const res = await fetchAvailableModels();
+      if (res && res.models && res.models.length > 0) {
+        setModels(res.models);
+        setModelsTimestamp(res.timestamp || new Date().toISOString());
+        // If current model not present, fallback to default or first
+        setSelectedModel((current) => {
+          if (res.models.some((m) => m.id === current)) return current;
+          const def = res.models.find((m) => m.is_default) || res.models[0];
+          return def.id;
+        });
+      }
+    } catch (err) {
+      console.warn("Could not load dynamic models:", err);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
+
+  // Handle automated fallback from backend
+  const handleModelFallback = useCallback((suggestedModel: string) => {
+    setSelectedModel(suggestedModel);
+  }, []);
 
   const {
     messages,
@@ -59,7 +119,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     hitlApproval,
     sendMessage,
     sendApproval,
-  } = useWebSocket(conversationId);
+  } = useWebSocket(conversationId, handleModelFallback);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -74,7 +134,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (e) e.preventDefault();
     if (!inputText.trim() || isProcessing) return;
     const text = inputText.trim();
-    sendMessage(text);
+    sendMessage(text, selectedModel);
     setInputText("");
 
     const refTitle = text.length > 35 ? text.slice(0, 35).trim() + "..." : text;
@@ -86,21 +146,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const handleIngest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ingestText.trim()) return;
-    setIsIngesting(true);
-    try {
-      const res = await ingestDocument(ingestText.trim(), "knowledge-base");
-      toast.success(`Ingested ${res.chunk_count || 1} chunks into pgvector!`);
-      setShowIngestModal(false);
-      setIngestText("");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to ingest document");
-    } finally {
-      setIsIngesting(false);
-    }
-  };
+  const selectedModelObj = models.find((m) => m.id === selectedModel);
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 relative overflow-hidden">
@@ -136,7 +182,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </form>
             ) : (
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-semibold text-white max-w-[160px] sm:max-w-xs md:max-w-md truncate">
+                <span className="text-sm font-semibold text-white max-w-[140px] sm:max-w-xs md:max-w-md truncate">
                   {headerTitle}
                 </span>
                 {onRename && (
@@ -161,26 +207,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
 
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             <span className="inline-flex items-center px-2.5 py-0.5 text-[11px] font-medium rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
               pgvector RAG + WebSockets
-            </span>
-            <span className="hidden lg:inline-flex items-center px-2.5 py-0.5 text-[11px] font-medium rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              FastAPI • LangGraph
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowIngestModal(true)}
-            className="px-3 py-1.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-zinc-700/60 shadow-sm"
-            title="Ingest Knowledge Document"
-          >
-            <FileText className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Ingest Document</span>
-          </button>
-
+        <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-zinc-900/90 px-2.5 py-1 rounded-full border border-zinc-800 shadow-sm">
             {isConnected ? (
               <>
@@ -218,8 +252,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {/* Input Bar */}
-      <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md shrink-0">
+      {/* Input Bar with Model Dropdown & Upload PDF INSIDE message box */}
+      <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md shrink-0 relative z-30">
         <div className="max-w-4xl mx-auto space-y-2">
           {/* Subtle Capabilities Pill List */}
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-zinc-400 px-0.5">
@@ -254,8 +288,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </button>
           </div>
 
-          <form onSubmit={handleSend} className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 rounded-2xl bg-zinc-900/90 border border-zinc-700/60 px-4 py-2 focus-within:border-cyan-500/80 focus-within:ring-1 focus-within:ring-cyan-500/30 transition-all shadow-inner">
+          <form onSubmit={handleSend} className="space-y-2">
+            <div className="rounded-2xl bg-zinc-900/90 border border-zinc-700/60 p-3 focus-within:border-cyan-500/80 focus-within:ring-1 focus-within:ring-cyan-500/30 transition-all shadow-inner">
+              {/* Text Input Area */}
               <input
                 ref={inputRef}
                 type="text"
@@ -265,71 +300,180 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   hitlApproval
                     ? "Action paused: Please respond to approval prompt above..."
                     : isProcessing
-                    ? "AmbientAI is executing workflow and reasoning..."
-                    : "Ask AmbientDesk anything... e.g. search web, query pgvector knowledge base, calculate AST math"
+                    ? `Generating answer using ${selectedModelObj?.name || selectedModel}...`
+                    : `Ask with ${selectedModelObj?.name || selectedModel}... (e.g. search web, pgvector RAG, AST math)`
                 }
                 disabled={isProcessing || !!hitlApproval}
-                className="flex-1 bg-transparent py-1 text-sm text-white placeholder-zinc-500 focus:outline-none disabled:opacity-50"
+                className="w-full bg-transparent py-1 text-sm text-white placeholder-zinc-500 focus:outline-none disabled:opacity-50"
               />
-            </div>
 
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isProcessing || !!hitlApproval}
-              className="p-3 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0"
-              title={isProcessing ? "Agent is processing..." : "Send Message"}
-            >
-              {isProcessing ? (
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
+              {/* Bottom Toolbar inside Message Box */}
+              <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-zinc-800/80">
+                <div className="flex items-center gap-2 relative">
+                  {/* Model Dropdown inside Message Box */}
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-zinc-200 text-xs font-medium border border-zinc-700/70 shadow-sm transition-all cursor-pointer group"
+                      title="Select Active Model (Probed Live)"
+                    >
+                      <Cpu className="w-3.5 h-3.5 text-cyan-400 group-hover:text-cyan-300 transition-colors shrink-0" />
+                      <span className="font-semibold text-white max-w-[130px] sm:max-w-[200px] truncate">
+                        {selectedModelObj?.name || selectedModel}
+                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 shrink-0 ${
+                          isModelDropdownOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {/* Popover Dropdown - opens UPWARDS with z-[100] so it floats on top of messages */}
+                    {isModelDropdownOpen && (
+                      <div className="absolute bottom-full left-0 mb-2.5 w-80 rounded-2xl bg-zinc-900 border border-zinc-700 shadow-[0_-10px_40px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-[100] p-2 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                                Active Models
+                              </span>
+                            </div>
+                            {modelsTimestamp && (
+                              <span className="text-[10px] text-zinc-400 mt-0.5">
+                                Live as of {new Date(modelsTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadModels();
+                            }}
+                            disabled={isLoadingModels}
+                            className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Re-probe Live Availability"
+                          >
+                            <RefreshCw
+                              className={`w-3.5 h-3.5 ${isLoadingModels ? "animate-spin text-cyan-400" : ""}`}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="max-h-64 overflow-y-auto py-1 space-y-1">
+                          {models.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-zinc-500">
+                              {isLoadingModels ? "Probing models..." : "No live models found"}
+                            </div>
+                          ) : (
+                            models.map((m) => {
+                              const isSelected = m.id === selectedModel;
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedModel(m.id);
+                                    setIsModelDropdownOpen(false);
+                                    toast.success(`Active Model: ${m.name}`, { id: "model-switch-toast" });
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-cyan-500/15 text-white border border-cyan-500/40"
+                                      : "text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+                                  }`}
+                                >
+                                  <div className="flex flex-col min-w-0 pr-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-semibold truncate">{m.name}</span>
+                                      {m.is_default && (
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 font-medium">
+                                          Default
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 truncate font-mono">
+                                      {m.provider.toUpperCase()} • {m.id}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                      Live
+                                    </span>
+                                    {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload PDF Button inside Message Box */}
+                  <button
+                    type="button"
+                    onClick={() => setShowKnowledgeModal(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-zinc-200 hover:text-purple-300 text-xs font-medium border border-zinc-700/70 shadow-sm transition-all cursor-pointer"
+                    title="Upload and Index PDF / Document"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Upload PDF</span>
+                  </button>
+
+                  {/* Paperclip quick attach inside Message Box */}
+                  <button
+                    type="button"
+                    onClick={() => setShowKnowledgeModal(true)}
+                    className="p-1.5 text-zinc-400 hover:text-purple-400 rounded-lg hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
+                    title="Attach PDF or Document to Knowledge Base"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Send Button */}
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || isProcessing || !!hitlApproval}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
+                  title={isProcessing ? "Agent is processing..." : `Send with ${selectedModelObj?.name || selectedModel}`}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <>
+                      <span className="text-xs font-semibold">Send</span>
+                      <Send className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </form>
         </div>
       </div>
 
-      {/* RAG Ingest Modal */}
-      {showIngestModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl glass-panel p-6 border border-white/10 shadow-2xl">
-            <h3 className="text-base font-semibold text-white flex items-center gap-2 mb-2">
-              <Upload className="w-4 h-4 text-cyan-400" />
-              Ingest Document into pgvector
-            </h3>
-            <p className="text-xs text-zinc-400 mb-4">
-              Enter any text knowledge to be chunked, embedded via Google Gemini, and stored in pgvector for semantic retrieval.
-            </p>
-
-            <form onSubmit={handleIngest}>
-              <textarea
-                value={ingestText}
-                onChange={(e) => setIngestText(e.target.value)}
-                placeholder="Paste knowledge text here..."
-                rows={6}
-                required
-                className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700/60 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 mb-4 resize-none"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowIngestModal(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isIngesting || !ingestText.trim()}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {isIngesting ? "Embedding & Storing..." : "Ingest Document"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* PDF Document Upload & Knowledge Modal */}
+      <KnowledgeModal
+        isOpen={showKnowledgeModal}
+        onClose={() => setShowKnowledgeModal(false)}
+        conversationId={conversationId}
+        onSelectDocumentForPrompt={(filename) => {
+          setInputText(`Regarding the document "${filename}", please analyze: `);
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }}
+        onDocumentUploaded={() => {
+          if (onDocumentUploaded) {
+            onDocumentUploaded();
+          }
+        }}
+      />
     </div>
   );
 };

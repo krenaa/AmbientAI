@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.session import Base
@@ -17,6 +17,8 @@ class Conversation(Base):
         index=True,
     )
     title = Column(String(255), default="New Conversation", nullable=False)
+    has_pdf = Column(Boolean, default=False, nullable=True)
+    pdf_name = Column(String(255), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

@@ -27,7 +27,9 @@ import { useToast } from "../../Toast";
 interface KnowledgeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  conversationId?: string;
   onSelectDocumentForPrompt?: (filename: string) => void;
+  onDocumentUploaded?: (filename: string) => void;
 }
 
 interface IndexedDoc {
@@ -39,7 +41,9 @@ interface IndexedDoc {
 export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
   isOpen,
   onClose,
+  conversationId,
   onSelectDocumentForPrompt,
+  onDocumentUploaded,
 }) => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +66,7 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchSearched, setSearchSearched] = useState(false);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
 
   const loadDocuments = async () => {
     setIsLoadingDocs(true);
@@ -86,12 +91,16 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
   if (!isOpen) return null;
 
   const handleCloseModal = () => {
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
     setSelectedFile(null);
     setUploadResult(null);
     setUploadError(null);
     setSearchQuery("");
     setSearchResults([]);
     setSearchSearched(false);
+    setIsSearching(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClose();
   };
@@ -121,9 +130,12 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
     setIsUploading(true);
     setUploadError(null);
     try {
-      const res = await uploadKnowledgeFile(selectedFile);
+      const res = await uploadKnowledgeFile(selectedFile, conversationId);
       setUploadResult(res.data);
       showToast(`Successfully indexed '${selectedFile.name}' into vector store!`, "success");
+      if (onDocumentUploaded) {
+        onDocumentUploaded(selectedFile.name);
+      }
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadDocuments();
@@ -180,21 +192,28 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
     handleCloseModal();
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
+
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    searchAbortControllerRef.current = new AbortController();
 
     setIsSearching(true);
     setSearchSearched(true);
     try {
       const res = await queryKnowledgeBase(
-        searchQuery,
+        searchQuery.trim(),
         4,
         selectedSourceFilter || undefined
       );
       setSearchResults(res.results || []);
     } catch (err: any) {
-      showToast(err.response?.data?.detail || "Search query failed.", "error");
+      if (err.name !== "CanceledError" && err.name !== "AbortError") {
+        showToast(err.response?.data?.detail || "Search query failed.", "error");
+      }
     } finally {
       setIsSearching(false);
     }
@@ -501,7 +520,21 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (isSearching) {
+                        if (searchAbortControllerRef.current) {
+                          searchAbortControllerRef.current.abort();
+                        }
+                        setIsSearching(false);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleSearch();
+                      }
+                    }}
                     placeholder="Ask a question or enter keywords to test vector similarity..."
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-700/80 text-white text-xs placeholder:text-zinc-500 focus:outline-none focus:border-purple-500"
                   />

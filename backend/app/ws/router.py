@@ -228,6 +228,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
             elif event_type == "message":
                 user_text = payload.get("content", "").strip()
                 task_id = payload.get("task_id", str(uuid.uuid4()))
+                selected_model = payload.get("model")
 
                 if not user_text:
                     continue
@@ -472,8 +473,8 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                             + [HumanMessage(content=augmented_text)]
                         )
 
-                    # Standard completion: stream tokens using LLM
-                    llm = get_llm()
+                    # Standard completion: stream tokens using chosen model from dropdown
+                    llm = get_llm(model_id=selected_model)
                     full_response = ""
                     try:
                         async for chunk in llm.astream(messages_to_llm):
@@ -489,13 +490,51 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                                     },
                                 )
                     except Exception as stream_err:
-                        logger.warning(f"Streaming token error: {stream_err}. Falling back to invoke.")
-                        res = llm.invoke(messages_to_llm)
-                        full_response = res.content
+                        logger.warning(
+                            f"Streaming error with model '{selected_model}': {stream_err}. Suggesting alternative model."
+                        )
+                        # Determine alternative model from available models
+                        if selected_model == "llama-3.1-8b-instant":
+                            fallback_id = "gemini-2.5-flash-lite"
+                            fallback_name = "Google Gemini 2.5 Flash Lite"
+                        else:
+                            fallback_id = "llama-3.1-8b-instant"
+                            fallback_name = "LLaMA 3.1 8B (Instant)"
+
                         await manager.send_json(
                             websocket,
-                            {"type": "token", "content": full_response, "task_id": task_id},
+                            {
+                                "type": "model_fallback",
+                                "failed_model": selected_model or "default",
+                                "suggested_model": fallback_id,
+                                "suggested_name": fallback_name,
+                                "message": f"Model '{selected_model or 'Selected'}' encountered an error. Switched to suggested model: {fallback_name}.",
+                                "task_id": task_id,
+                            },
                         )
+
+                        # Continue answering with the suggested fallback model
+                        try:
+                            fallback_llm = get_llm(model_id=fallback_id)
+                            async for chunk in fallback_llm.astream(messages_to_llm):
+                                token_text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                                if token_text:
+                                    full_response += token_text
+                                    await manager.send_json(
+                                        websocket,
+                                        {
+                                            "type": "token",
+                                            "content": token_text,
+                                            "task_id": task_id,
+                                        },
+                                    )
+                        except Exception:
+                            res = llm.invoke(messages_to_llm)
+                            full_response = res.content
+                            await manager.send_json(
+                                websocket,
+                                {"type": "token", "content": full_response, "task_id": task_id},
+                            )
 
                     # Mark completed
                     await manager.send_json(

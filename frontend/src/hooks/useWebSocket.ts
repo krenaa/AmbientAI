@@ -46,7 +46,10 @@ export async function prefetchConversationMessages(convId: string): Promise<void
   } catch {}
 }
 
-export function useWebSocket(conversationId: string) {
+export function useWebSocket(
+  conversationId: string,
+  onModelFallback?: (suggestedModel: string) => void
+) {
   const [messages, setMessages] = useState<Message[]>(() => {
     return getCachedMessages(conversationId);
   });
@@ -61,6 +64,8 @@ export function useWebSocket(conversationId: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onModelFallbackRef = useRef(onModelFallback);
+  onModelFallbackRef.current = onModelFallback;
 
   const updateMessages = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
@@ -201,14 +206,23 @@ export function useWebSocket(conversationId: string) {
           setIsProcessing(false);
           setStatusMessage(null);
           activeAssistantMessageIdRef.current = null;
-          toast.success("Task completed!", { id: "task-complete" });
+          toast.success("Response generated successfully", { id: "task-complete" });
+        }
+
+        // Model Fallback / Error Suggestion
+        else if (payload.type === "model_fallback") {
+          const fallbackMsg = payload.message || `Switched to fallback model: ${payload.suggested_name || payload.suggested_model}`;
+          toast(fallbackMsg, { icon: "⚡", duration: 5000, id: "model-fallback" });
+          if (onModelFallbackRef.current && payload.suggested_model) {
+            onModelFallbackRef.current(payload.suggested_model);
+          }
         }
 
         // Error
         else if (payload.type === "error") {
           setIsProcessing(false);
           setStatusMessage(null);
-          toast.error(payload.error || "Agent execution error");
+          toast.error(payload.error || "Agent execution error", { id: "agent-error" });
         }
       } catch (err) {
         console.error("Failed to parse WebSocket message:", err);
@@ -225,9 +239,9 @@ export function useWebSocket(conversationId: string) {
   }, [connect]);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, model?: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        toast.error("WebSocket is disconnected. Reconnecting...");
+        toast.error("WebSocket disconnected • Reconnecting...", { id: "ws-status" });
         return;
       }
 
@@ -248,6 +262,7 @@ export function useWebSocket(conversationId: string) {
         JSON.stringify({
           type: "message",
           content,
+          model,
           task_id: "task-" + Date.now(),
         })
       );
@@ -258,7 +273,7 @@ export function useWebSocket(conversationId: string) {
   const sendApproval = useCallback(
     (decision: "approved" | "rejected") => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        toast.error("WebSocket is disconnected");
+        toast.error("WebSocket disconnected", { id: "ws-status" });
         return;
       }
 
@@ -276,9 +291,9 @@ export function useWebSocket(conversationId: string) {
       );
 
       if (decision === "approved") {
-        toast.success("Action approved! Resuming execution...");
+        toast.success("Security Action Approved • Resuming workflow...", { id: "hitl-action" });
       } else {
-        toast("Action rejected by user.", { icon: "🛑" });
+        toast("Action Rejected by user • Execution halted", { icon: "🛑", id: "hitl-action" });
       }
     },
     [hitlApproval]

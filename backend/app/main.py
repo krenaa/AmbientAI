@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 import logging
 from contextlib import asynccontextmanager
@@ -7,6 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
 from app.api.conversations import router as conversations_router
+from app.api.knowledge import router as knowledge_router
+from app.api.models import router as models_router
 from app.api.retrieval import router as retrieval_router
 from app.core.config import get_settings
 from app.db.session import init_db
@@ -23,10 +26,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} in [{settings.ENVIRONMENT}] mode...")
-    try:
-        await init_db()
-    except Exception as e:
-        logger.error(f"Error initializing database during startup: {e}")
+    # Initialize DB in background so HTTP endpoints are immediately available without blocking on remote DB cold-starts
+    asyncio.create_task(init_db())
     yield
     logger.info(f"Shutting down {settings.APP_NAME}...")
 
@@ -57,6 +58,10 @@ def create_app() -> FastAPI:
     app.include_router(retrieval_router, prefix="/api/retrieval", tags=["Retrieval"])
     app.include_router(retrieval_router, prefix="/api/api/retrieval", tags=["Retrieval"])
     app.include_router(retrieval_router, prefix="/retrieval", tags=["Retrieval"])
+    app.include_router(models_router, prefix="/api/models", tags=["Models"])
+    app.include_router(models_router, prefix="/models", tags=["Models"])
+    app.include_router(knowledge_router, prefix="/api/knowledge", tags=["Knowledge"])
+    app.include_router(knowledge_router, prefix="/knowledge", tags=["Knowledge"])
     app.include_router(ws_router, tags=["WebSockets"])
 
     @app.get("/", tags=["General"])

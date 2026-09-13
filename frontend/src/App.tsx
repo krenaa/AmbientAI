@@ -6,6 +6,7 @@ import {
   UserPlus,
   LogOut,
   MessageSquare,
+  FileText,
   PlusCircle,
   Pencil,
   Trash2,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth, AuthProvider } from "./context/AuthContext";
+import { ToastProvider } from "./Toast";
 import {
   registerUser,
   loginUser,
@@ -138,6 +140,8 @@ const AuthView: React.FC = () => {
 interface ConversationItem {
   id: string;
   title: string;
+  has_pdf?: boolean;
+  pdf_name?: string;
 }
 
 const MainDashboard: React.FC = () => {
@@ -146,6 +150,17 @@ const MainDashboard: React.FC = () => {
   const [activeConvId, setActiveConvId] = useState<string>(() => crypto.randomUUID());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+
+  const refreshConversations = async () => {
+    try {
+      const list = await getConversations();
+      if (list && list.length > 0) {
+        setConversations(list);
+      }
+    } catch (e) {
+      console.debug("Could not refresh conversations:", e);
+    }
+  };
 
   // Load conversations from backend with retry
   useEffect(() => {
@@ -351,13 +366,28 @@ const MainDashboard: React.FC = () => {
                     : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200 border border-transparent"
                 }`}
               >
-                <div className="flex items-center gap-2.5 truncate pr-2">
-                  <MessageSquare
-                    className={`w-3.5 h-3.5 shrink-0 ${
-                      isActive ? "text-cyan-400" : "text-zinc-500 group-hover:text-zinc-400"
-                    }`}
-                  />
+                <div className="flex items-center gap-2 truncate pr-2">
+                  {conv.has_pdf ? (
+                    <div className="shrink-0 flex items-center" title={`PDF attached: ${conv.pdf_name || "Document"}`}>
+                      <FileText
+                        className={`w-3.5 h-3.5 ${
+                          isActive ? "text-purple-400" : "text-purple-400/90 group-hover:text-purple-300"
+                        }`}
+                      />
+                    </div>
+                  ) : (
+                    <MessageSquare
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isActive ? "text-cyan-400" : "text-zinc-500 group-hover:text-zinc-400"
+                      }`}
+                    />
+                  )}
                   <span className="truncate">{conv.title}</span>
+                  {conv.has_pdf && (
+                    <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-tight shrink-0">
+                      PDF
+                    </span>
+                  )}
                 </div>
 
                 <div
@@ -415,6 +445,7 @@ const MainDashboard: React.FC = () => {
           onRename={(newTitle) => handleSaveRename(activeConvId, undefined, newTitle)}
           onDelete={() => handleDeleteConversation(activeConvId)}
           onMessageSent={handleMessageSent}
+          onDocumentUploaded={refreshConversations}
         />
       </main>
     </div>
@@ -427,11 +458,44 @@ const AppContent: React.FC = () => {
     <>
       <Toaster
         position="top-right"
+        gutter={12}
         toastOptions={{
+          duration: 2800,
           style: {
-            background: "#18181b",
+            background: "rgba(18, 18, 23, 0.95)",
             color: "#f4f4f5",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+            boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 20px 0 rgba(6, 182, 212, 0.15)",
+            borderRadius: "16px",
+            padding: "11px 18px",
+            fontSize: "13px",
+            fontWeight: "500",
+            maxWidth: "420px",
+            letterSpacing: "-0.01em",
+          },
+          success: {
+            duration: 2500,
+            style: {
+              border: "1px solid rgba(52, 211, 153, 0.35)",
+              boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(52, 211, 153, 0.18)",
+            },
+            iconTheme: {
+              primary: "#34d399",
+              secondary: "#121217",
+            },
+          },
+          error: {
+            duration: 4000,
+            style: {
+              border: "1px solid rgba(244, 63, 94, 0.4)",
+              boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(244, 63, 94, 0.18)",
+            },
+            iconTheme: {
+              primary: "#fb7185",
+              secondary: "#121217",
+            },
           },
         }}
       />
@@ -443,7 +507,9 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }
