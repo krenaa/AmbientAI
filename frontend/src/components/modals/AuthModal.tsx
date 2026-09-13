@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Lock, Mail, User, Bot, Loader2, AlertCircle } from "lucide-react";
+import { X, Lock, Mail, User, Loader2, AlertCircle } from "lucide-react";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -56,8 +56,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Modal Header */}
         <div className="flex flex-col items-center text-center space-y-1.5">
-          <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-1">
-            <Bot className="w-5 h-5 text-zinc-200" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 overflow-hidden">
+            <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-base font-bold text-white tracking-tight">
             {isRegister ? "Create Ambient Account" : "Welcome Back"}

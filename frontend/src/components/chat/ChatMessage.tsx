@@ -6,8 +6,7 @@ import {
   ShieldAlert,
   Clock,
   AlertTriangle,
-  ArrowRight,
-  Bot
+  ArrowRight
 } from "lucide-react";
 import type { AgentTask } from "../../types";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
@@ -82,8 +81,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
             {/* 2. Agent Response Bubble */}
             <div className="flex items-start gap-3.5">
-              <div className={`w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 mt-1 shadow-sm ${isStreaming && isLatestTurn ? "ring-1 ring-cyan-500/50" : ""}`}>
-                <Bot className="w-4 h-4 text-cyan-400" />
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1 shadow-sm overflow-hidden ${isStreaming && isLatestTurn ? "ring-1 ring-cyan-500/50" : ""}`}>
+                <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
               </div>
 
               <div className="flex-1 min-w-0 space-y-4">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bot, User as UserIcon, Copy, Check, RotateCcw, Reply } from "lucide-react";
+import { User as UserIcon, Copy, Check, RotateCcw, Reply } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { Message } from "../types";
 import { ThinkingIndicator } from "./chat/ThinkingIndicator";
@@ -117,8 +117,8 @@ export const MessageList: React.FC<MessageListProps> = ({
         </div>
       ) : messages.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3 text-cyan-400 shadow-md">
-            <Bot className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-md overflow-hidden">
+            <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
           </div>
           <p className="text-sm font-semibold text-zinc-200">Start an Agent Session</p>
           <p className="text-xs text-zinc-500 max-w-sm mt-1 leading-relaxed">
@@ -151,8 +151,8 @@ export const MessageList: React.FC<MessageListProps> = ({
             }`}
           >
             {!isUser && (
-              <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 mt-1 shadow-sm">
-                <Bot className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1 shadow-sm overflow-hidden">
+                <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
               </div>
             )}
 

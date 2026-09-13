@@ -1,5 +1,5 @@
 import React from "react";
-import { Bot, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 interface ThinkingIndicatorProps {
   currentNodeName?: string;
@@ -14,8 +14,8 @@ export const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = ({
 
   return (
     <div className="flex items-start gap-3 max-w-3xl mr-auto animate-in fade-in duration-200">
-      <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0">
-        <Bot className="w-4 h-4" />
+      <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+        <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
       </div>
 
       <div className="rounded-2xl rounded-tl-none px-4 py-3 text-sm bg-zinc-900/90 border border-zinc-800/80 text-zinc-200 flex items-center gap-3 shadow-sm">
