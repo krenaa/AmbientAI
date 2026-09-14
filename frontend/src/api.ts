@@ -147,12 +147,12 @@ export const fetchAvailableModels = async (): Promise<ModelsResponse> => {
   } catch {
     // Fallback default list if offline
     return {
-      selected_default: "auto",
+      selected_default: "openai/gpt-oss-20b",
       models: [
         { id: "auto", name: "⚡ Auto Fallback (Resilient Multi-Model)", provider: "Auto", is_free: true, is_available: true, badge: "Auto Failover" },
-        { id: "llama-3.1-8b-instant", name: "Groq: LLaMA 3.1 8B (Instant)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "openai/gpt-oss-20b", name: "Groq: GPT-OSS 20B (Ultra Fast)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
         { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "Google", is_free: true, is_available: true, badge: "Free Tier" },
-        { id: "gemma2-9b-it", name: "Groq: Gemma 2 9B (Ultra Fast)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "openai/gpt-oss-120b", name: "Groq: GPT-OSS 120B (Reasoning)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
       ],
     };
   }

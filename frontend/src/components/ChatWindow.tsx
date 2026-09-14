@@ -48,7 +48,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Dynamic Models State
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>("llama-3.1-8b-instant");
+  const [selectedModel, setSelectedModel] = useState<string>("openai/gpt-oss-20b");
   const [modelsTimestamp, setModelsTimestamp] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);

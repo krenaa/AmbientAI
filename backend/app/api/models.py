@@ -99,12 +99,9 @@ async def list_available_models():
 
     # Prioritize top recommended models first
     priority_order = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "llama-3.1-70b-versatile",
-        "gemma2-9b-it",
-        "mixtral-8x7b-32768",
-        "deepseek-r1-distill-llama-70b",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
     ]
 
     ordered_model_ids: List[str] = []
@@ -176,9 +173,9 @@ async def list_available_models():
 
     # Set best default
     default_choice = (
-        "llama-3.3-70b-versatile"
-        if "llama-3.3-70b-versatile" in ordered_model_ids
-        else (ordered_model_ids[0] if ordered_model_ids else "auto")
+        "openai/gpt-oss-20b"
+        if "openai/gpt-oss-20b" in ordered_model_ids
+        else (ordered_model_ids[0] if ordered_model_ids else "gemini-2.5-flash-lite")
     )
 
     current_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()

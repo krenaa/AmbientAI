@@ -175,7 +175,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                       {task.error_message || "The selected model is unavailable or encountered an error."}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-amber-300/90 pt-1">
-                      <span>💡 <strong>Tip:</strong> Please select an active Groq model (e.g. <strong>LLaMA 3.3 70B</strong> or <strong>Gemma 2 9B</strong>) from the model selector and retry.</span>
+                      <span>💡 <strong>Tip:</strong> Please select an active model (e.g. <strong>GPT-OSS 20B</strong> or <strong>Gemini 2.5 Flash Lite</strong>) from the model selector and retry.</span>
                     </div>
                   </div>
                 )}

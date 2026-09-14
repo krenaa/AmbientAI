@@ -241,8 +241,14 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                 user_text = payload.get("content", "").strip()
                 task_id = payload.get("task_id", str(uuid.uuid4()))
                 selected_model = payload.get("model")
-                if selected_model == "llama-3.3-70b-versatile":
-                    selected_model = "llama-3.1-8b-instant"
+                if selected_model:
+                    lowered = selected_model.lower()
+                    if "llama" in lowered or "mixtral" in lowered or "gemma" in lowered:
+                        selected_model = "openai/gpt-oss-20b"
+                    elif "gemini" in lowered and "lite" not in lowered:
+                        selected_model = "gemini-2.5-flash-lite"
+                else:
+                    selected_model = "openai/gpt-oss-20b"
 
                 if not user_text:
                     continue
@@ -526,12 +532,12 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                             f"Streaming error with model '{selected_model}': {stream_err}. Suggesting alternative model."
                         )
                         # Determine alternative model from available models
-                        if selected_model == "llama-3.1-8b-instant":
+                        if selected_model == "openai/gpt-oss-20b":
                             fallback_id = "gemini-2.5-flash-lite"
                             fallback_name = "Google Gemini 2.5 Flash Lite"
                         else:
-                            fallback_id = "llama-3.1-8b-instant"
-                            fallback_name = "LLaMA 3.1 8B (Instant)"
+                            fallback_id = "openai/gpt-oss-20b"
+                            fallback_name = "Groq: GPT-OSS 20B (Ultra Fast)"
 
                         await manager.send_json(
                             websocket,

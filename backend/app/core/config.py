@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Inference & Search Providers
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GOOGLE_API_KEY: Optional[str] = None
     GOOGLE_MODEL: str = "gemini-2.5-flash-lite"
     TAVILY_API_KEY: Optional[str] = None
