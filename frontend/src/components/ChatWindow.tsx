@@ -19,7 +19,6 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { MessageList } from "./MessageList";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { KnowledgeModal } from "./modals/KnowledgeModal";
-import { HitlModal } from "./modals/HitlModal";
 import { fetchAvailableModels } from "../api";
 import type { ModelOption } from "../types";
 
@@ -44,7 +43,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [inputText, setInputText] = useState("");
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
-  const [showHitlModal, setShowHitlModal] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [headerTitle, setHeaderTitle] = useState(conversationTitle || "New Chat");
 
@@ -125,14 +123,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     sendApproval,
     stopGenerating,
   } = useWebSocket(conversationId, handleModelFallback);
-
-  useEffect(() => {
-    if (hitlApproval) {
-      setShowHitlModal(true);
-    } else {
-      setShowHitlModal(false);
-    }
-  }, [hitlApproval]);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -280,7 +270,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             prompt={hitlApproval.prompt}
             onApprove={() => sendApproval("approved")}
             onReject={() => sendApproval("rejected")}
-            onOpenModal={() => setShowHitlModal(true)}
             isProcessing={isProcessing}
           />
         </div>
@@ -503,29 +492,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           if (onDocumentUploaded) {
             onDocumentUploaded();
           }
-        }}
-      />
-
-      {/* Human-in-the-Loop Review Modal Dialog */}
-      <HitlModal
-        isOpen={showHitlModal && !!hitlApproval}
-        onClose={() => setShowHitlModal(false)}
-        task={
-          hitlApproval
-            ? {
-                id: hitlApproval.taskId,
-                status: "awaiting_approval",
-                prompt: inputText || "Send notification to admin team that the production deployment was completed successfully.",
-                approval_prompt: hitlApproval.prompt,
-                execution_time_ms: 0,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              }
-            : null
-        }
-        onDecide={async (_taskId, approved) => {
-          sendApproval(approved ? "approved" : "rejected");
-          setShowHitlModal(false);
         }}
       />
     </div>

@@ -5,7 +5,6 @@ interface ApprovalPromptProps {
   prompt: string;
   onApprove: () => void;
   onReject: () => void;
-  onOpenModal?: () => void;
   isProcessing?: boolean;
 }
 
@@ -13,7 +12,6 @@ export const ApprovalPrompt: React.FC<ApprovalPromptProps> = ({
   prompt,
   onApprove,
   onReject,
-  onOpenModal,
   isProcessing = false,
 }) => {
   return (
@@ -23,20 +21,9 @@ export const ApprovalPrompt: React.FC<ApprovalPromptProps> = ({
           <AlertTriangle className="w-5 h-5 animate-pulse" />
         </div>
         <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-amber-300">
-              Human-in-the-Loop Approval Required
-            </h4>
-            {onOpenModal && (
-              <button
-                type="button"
-                onClick={onOpenModal}
-                className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline cursor-pointer"
-              >
-                Open Review Dialog
-              </button>
-            )}
-          </div>
+          <h4 className="text-sm font-semibold text-amber-300">
+            Human-in-the-Loop Approval Required
+          </h4>
           <p className="text-sm text-zinc-300 mt-1 leading-relaxed">
             {prompt}
           </p>

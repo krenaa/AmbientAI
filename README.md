@@ -52,8 +52,6 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 <div align="center">
 
 ![Human in the Loop Approval Card](docs/images/hitl.png)
-
-![Human in the Loop Approval Popup Dialog](docs/images/hitl_popup.png)
 *When sensitive operations are detected, execution pauses and requests supervisor review via Approve (`✓`) or Reject (`✗`) buttons before executing.*
 
 </div>
