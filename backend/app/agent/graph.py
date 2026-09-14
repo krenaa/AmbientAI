@@ -25,21 +25,38 @@ def check_intent(state: AgentState) -> Dict[str, Any]:
 
     # Sensitive action keywords requiring human-in-the-loop governance
     sensitive_keywords = [
+        "send notification",
+        "notification",
+        "notify",
+        "send email",
+        "email to",
+        "alert team",
+        "alert admin",
+        "alert",
         "delete",
         "destroy",
         "drop",
         "terminate",
         "wipe",
         "deploy to prod",
+        "deploy",
         "publish",
         "transfer",
         "execute sensitive",
         "modify schema",
+        "cleanup",
     ]
 
     for kw in sensitive_keywords:
         if kw in content:
-            prompt = f"Human approval required: Are you sure you want to execute action '{kw}'?"
+            if any(k in kw for k in ["notification", "notify", "email", "alert"]):
+                prompt = "Human approval required: Are you sure you want to dispatch this notification/alert to the team?"
+            elif any(k in kw for k in ["delete", "destroy", "drop", "wipe"]):
+                prompt = f"Human approval required: Are you sure you want to execute destructive action '{kw}'?"
+            elif "deploy" in kw:
+                prompt = "Human approval required: Are you sure you want to execute a production deployment?"
+            else:
+                prompt = f"Human approval required: Are you sure you want to execute action '{kw}'?"
             logger.info(f"Triggering HITL interrupt for keyword '{kw}'")
             return {
                 "requires_approval": True,
