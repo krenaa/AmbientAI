@@ -66,7 +66,9 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 ![Knowledge Base PDF Ingestion](docs/images/rag_pdf_upload.png)
 
 ![Document Indexed Successfully](docs/images/rag_pdf_indexed.png)
-*Drag-and-drop PDF ingestion modal with high-contrast text, automated text chunking, and 768-dim vector embeddings persisted in Neon PostgreSQL.*
+
+![Document History and Management](docs/images/rag_pdf_history.png)
+*Drag-and-drop PDF ingestion with high-contrast UI, automated text chunking, 768-dim embeddings in PostgreSQL (`pgvector`), and document history with one-click "Ask Agent" retrieval.*
 
 </div>
 
@@ -96,6 +98,8 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 <div align="center">
 
 ![Real-Time Profile Overview](docs/images/profile_overview.png)
+
+![User Profile Settings and Security](docs/images/profile_settings.png)
 *Live execution metrics calculating total executions, completed tasks, compute duration, vector chunks, and session history directly from PostgreSQL.*
 
 </div>
