@@ -12,6 +12,7 @@ export interface User {
   email: string;
   full_name?: string;
   created_at: string;
+  stats?: UserStats;
 }
 
 export interface Conversation {
@@ -84,8 +85,10 @@ export interface TaskExecutionLog {
 export interface UserStats {
   total_tasks: number;
   completed_tasks: number;
-  awaiting_approval: number;
+  awaiting_approval?: number;
   total_execution_time_s: number;
+  total_conversations?: number;
+  total_chunks?: number;
 }
 
 export interface UserProfile {
@@ -95,6 +98,7 @@ export interface UserProfile {
   role: "Admin" | "Member";
   is_staff?: boolean;
   date_joined?: string;
+  created_at?: string;
   stats?: UserStats;
 }
 

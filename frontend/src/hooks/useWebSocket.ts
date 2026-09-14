@@ -67,6 +67,11 @@ export function useWebSocket(
   const onModelFallbackRef = useRef(onModelFallback);
   onModelFallbackRef.current = onModelFallback;
 
+  const isProcessingRef = useRef(isProcessing);
+  isProcessingRef.current = isProcessing;
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const updateMessages = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
       setMessages((prev) => {
@@ -124,14 +129,16 @@ export function useWebSocket(
 
     ws.onopen = () => {
       setIsConnected(true);
-      // Background sync on connection
-      getMessages(conversationId)
-        .then((history) => {
-          if (history && Array.isArray(history)) {
-            updateMessages(history);
-          }
-        })
-        .catch(() => {});
+      // Safe initial load: only if empty and not actively generating tokens
+      if (!isProcessingRef.current && (!messagesRef.current || messagesRef.current.length === 0)) {
+        getMessages(conversationId)
+          .then((history) => {
+            if (history && Array.isArray(history) && !isProcessingRef.current) {
+              updateMessages(history);
+            }
+          })
+          .catch(() => {});
+      }
     };
 
     ws.onclose = () => {
@@ -164,13 +171,14 @@ export function useWebSocket(
           const token = payload.content;
           updateMessages((prev) => {
             const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.role === "assistant" && lastMsg.id === activeAssistantMessageIdRef.current) {
+            // If the last message is an assistant message, ALWAYS append to it to prevent split boxes
+            if (lastMsg && lastMsg.role === "assistant") {
               return [
                 ...prev.slice(0, -1),
                 { ...lastMsg, content: lastMsg.content + token },
               ];
             } else {
-              const newMsgId = "assistant-" + Date.now();
+              const newMsgId = "assistant-" + (payload.task_id || Date.now());
               activeAssistantMessageIdRef.current = newMsgId;
               return [
                 ...prev,
@@ -299,6 +307,19 @@ export function useWebSocket(
     [hitlApproval]
   );
 
+  const stopGenerating = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: "stop" }));
+      } catch (err) {
+        console.error("Failed to send stop signal:", err);
+      }
+    }
+    setIsProcessing(false);
+    setStatusMessage(null);
+    toast("Generation stopped", { icon: "🛑", id: "stop-generating" });
+  }, []);
+
   return {
     messages,
     isLoadingHistory,
@@ -308,5 +329,6 @@ export function useWebSocket(
     hitlApproval,
     sendMessage,
     sendApproval,
+    stopGenerating,
   };
 }

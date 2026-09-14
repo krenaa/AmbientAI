@@ -17,7 +17,7 @@ import {
   Lock
 } from "lucide-react";
 import type { UserProfile } from "../../types";
-import { updateProfile } from "../../api";
+import { updateProfile, fetchCurrentUser } from "../../api";
 import { useToast } from "../../Toast";
 import { validateFullName, getDeterministicAvatar } from "../../utils/avatar";
 
@@ -40,6 +40,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("overview");
+  const [activeUser, setActiveUser] = useState<any>(user);
+
+  useEffect(() => {
+    if (user) {
+      setActiveUser(user);
+    }
+  }, [user]);
 
   // Account Edit Form State
   const [fullName, setFullName] = useState(user?.full_name || "");
@@ -47,10 +54,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [accountError, setAccountError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) {
-      setFullName(user.full_name || "");
+    if (activeUser) {
+      setFullName(activeUser.full_name || "");
     }
-  }, [user, isOpen]);
+  }, [activeUser, isOpen]);
+
+  // Fetch real-time live execution statistics whenever the profile modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchCurrentUser()
+        .then((updated) => {
+          if (updated) {
+            setActiveUser(updated);
+            if (onProfileUpdated) {
+              onProfileUpdated(updated);
+            }
+          }
+        })
+        .catch((err) => {
+          console.debug("Failed to fetch fresh user stats:", err);
+        });
+    }
+  }, [isOpen]);
 
   // Password Reset Form State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -213,7 +238,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span>Total Executions</span>
                 </div>
                 <p className="text-lg font-bold text-[#1C120C] font-mono">
-                  {user.stats?.total_tasks ?? 0}
+                  {(activeUser || user).stats?.total_tasks ?? 0}
                 </p>
               </div>
 
@@ -223,7 +248,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span>Completed</span>
                 </div>
                 <p className="text-lg font-bold text-[#183E6C] font-mono">
-                  {user.stats?.completed_tasks ?? 0}
+                  {(activeUser || user).stats?.completed_tasks ?? 0}
                 </p>
               </div>
 
@@ -233,8 +258,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span>Compute Time</span>
                 </div>
                 <p className="text-lg font-bold text-[#1C120C] font-mono">
-                  {user.stats?.total_execution_time_s
-                    ? `${user.stats.total_execution_time_s.toFixed(1)}s`
+                  {(activeUser || user).stats?.total_execution_time_s
+                    ? `${(activeUser || user).stats.total_execution_time_s.toFixed(1)}s`
                     : "0.0s"}
                 </p>
               </div>
@@ -244,16 +269,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <Layers className="w-3.5 h-3.5 text-[#A53920]" />
                   <span>Vector Database</span>
                 </div>
-                <p className="text-lg font-bold text-[#A53920] font-mono">pgvector</p>
+                <p className="text-lg font-bold text-[#A53920] font-mono">
+                  {(activeUser || user).stats?.total_chunks ? `${(activeUser || user).stats.total_chunks} Chunks` : "pgvector"}
+                </p>
               </div>
             </div>
 
-            {user.date_joined && (
-              <div className="flex items-center gap-2 text-xs text-[#584134] font-mono pt-1">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Registered: {new Date(user.date_joined).toLocaleDateString()}</span>
+            <div className="flex items-center justify-between text-xs text-[#584134] font-mono pt-1">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[#183E6C]" />
+                <span>
+                  Member since:{" "}
+                  {(activeUser || user).created_at
+                    ? new Date((activeUser || user).created_at).toLocaleDateString()
+                    : (activeUser || user).date_joined
+                    ? new Date((activeUser || user).date_joined).toLocaleDateString()
+                    : "Active"}
+                </span>
               </div>
-            )}
+              <div className="font-semibold text-[#183E6C]">
+                <span>Sessions: {(activeUser || user).stats?.total_conversations ?? 0}</span>
+              </div>
+            </div>
           </div>
         )}
 

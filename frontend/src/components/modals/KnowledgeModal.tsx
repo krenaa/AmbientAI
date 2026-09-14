@@ -220,36 +220,37 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-2xl bg-[#FAF5E8] border border-[#D8C7B4] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-[#1C120C]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#D8C7B4] bg-[#F2E9DC]">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+            <div className="p-2 rounded-xl bg-[#EAE0D2] border border-[#D8C7B4] text-[#B84328]">
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <h2 className="text-base font-bold text-[#1C120C] flex items-center gap-2">
                 Knowledge Base & PDF RAG
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#EAE0D2] border border-[#D8C7B4] text-[#B84328] font-bold">
                   pgvector
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-[#584134]">
                 Upload PDFs or documentation to index vector embeddings for agent retrieval.
               </p>
             </div>
           </div>
           <button
             onClick={handleCloseModal}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg text-[#584134] hover:text-[#1C120C] hover:bg-[#EAE0D2] transition-all cursor-pointer"
+            aria-label="Close dialog"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center justify-between px-6 pt-3 border-b border-zinc-800 bg-zinc-950/20">
+        <div className="flex items-center justify-between px-6 pt-3 border-b border-[#D8C7B4] bg-[#EFE3D3]">
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -257,10 +258,10 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                 setUploadResult(null);
                 setUploadError(null);
               }}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
                 activeTab === "upload"
-                  ? "border-purple-400 text-purple-300"
-                  : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  ? "border-[#B84328] text-[#B84328]"
+                  : "border-transparent text-[#584134] hover:text-[#1C120C]"
               }`}
             >
               <UploadCloud className="w-4 h-4" />
@@ -271,26 +272,26 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                 setActiveTab("history");
                 loadDocuments();
               }}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
                 activeTab === "history"
-                  ? "border-purple-400 text-purple-300"
-                  : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  ? "border-[#B84328] text-[#B84328]"
+                  : "border-transparent text-[#584134] hover:text-[#1C120C]"
               }`}
             >
               <FolderOpen className="w-4 h-4" />
               <span>Document History</span>
               {documents.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/20 text-purple-300 font-mono">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#FAF5E8] border border-[#D8C7B4] text-[#B84328] font-mono font-bold">
                   {documents.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setActiveTab("search")}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
                 activeTab === "search"
-                  ? "border-purple-400 text-purple-300"
-                  : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  ? "border-[#B84328] text-[#B84328]"
+                  : "border-transparent text-[#584134] hover:text-[#1C120C]"
               }`}
             >
               <Search className="w-4 h-4" />
@@ -301,7 +302,7 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
             <button
               onClick={handleClearAll}
               disabled={isClearingAll}
-              className="text-[11px] text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[11px] text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-1 cursor-pointer font-medium"
             >
               <Trash2 className="w-3 h-3" />
               <span>Clear All</span>
@@ -320,8 +321,8 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
                   selectedFile
-                    ? "border-purple-500/50 bg-purple-500/5"
-                    : "border-zinc-700/60 hover:border-zinc-600 bg-zinc-950/40 hover:bg-zinc-950/70"
+                    ? "border-[#B84328] bg-[#F4ECE0]"
+                    : "border-[#C59B82] hover:border-[#B84328] bg-[#F4ECE0]/80 hover:bg-[#EAE0D2]"
                 }`}
               >
                 <input
@@ -332,18 +333,18 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                   className="hidden"
                 />
                 <div className="flex flex-col items-center justify-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-zinc-800/80 border border-zinc-700 flex items-center justify-center text-purple-400 shadow-sm">
+                  <div className="w-12 h-12 rounded-2xl bg-[#EAE0D2] border border-[#D8C7B4] flex items-center justify-center text-[#B84328] shadow-sm">
                     <UploadCloud className="w-6 h-6" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">
+                    <p className="text-sm font-bold text-[#1C120C]">
                       {selectedFile ? (
-                        <span className="text-purple-300 font-semibold">{selectedFile.name}</span>
+                        <span className="text-[#B84328] font-bold">{selectedFile.name}</span>
                       ) : (
                         "Click to browse or drag & drop a PDF document"
                       )}
                     </p>
-                    <p className="text-xs text-zinc-400 mt-1">
+                    <p className="text-xs text-[#584134] mt-1 font-medium">
                       Supports PDF (.pdf), Text (.txt), Markdown (.md)
                     </p>
                   </div>
@@ -351,28 +352,28 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
               </div>
 
               {selectedFile && (
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60">
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#F2E9DC] border border-[#D8C7B4] shadow-xs">
                   <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-purple-400" />
+                    <FileText className="w-5 h-5 text-[#B84328]" />
                     <div>
-                      <p className="text-xs font-medium text-white truncate max-w-xs">{selectedFile.name}</p>
-                      <p className="text-[11px] text-zinc-400">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                      <p className="text-xs font-bold text-[#1C120C] truncate max-w-xs">{selectedFile.name}</p>
+                      <p className="text-[11px] text-[#584134] font-medium">{(selectedFile.size / 1024).toFixed(1)} KB</p>
                     </div>
                   </div>
                   <button
                     onClick={handleUpload}
                     disabled={isUploading}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-purple-600/20 transition-all cursor-pointer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#B84328] hover:bg-[#A53920] disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-[#B84328]/25 transition-all cursor-pointer"
                   >
                     {isUploading ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Indexing Chunks...</span>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                        <span className="text-white font-bold">Indexing Chunks...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Embed & Index</span>
+                        <Sparkles className="w-3.5 h-3.5 text-white" />
+                        <span className="text-white font-bold">Embed & Index</span>
                       </>
                     )}
                   </button>
@@ -380,27 +381,27 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
               )}
 
               {uploadError && (
-                <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-950 text-xs font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-700" />
                   <span>{uploadError}</span>
                 </div>
               )}
 
               {uploadResult && (
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 space-y-2">
+                <div className="p-4 rounded-xl bg-[#E2F1E8] border border-[#86C9A2] text-[#0E3E22] space-y-2 shadow-xs">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 font-semibold text-xs text-emerald-300">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <div className="flex items-center gap-2 font-bold text-xs text-[#0E3E22]">
+                      <CheckCircle2 className="w-4 h-4 text-[#1B7C47]" />
                       <span>Document Indexed Successfully!</span>
                     </div>
                     <button
                       onClick={() => setUploadResult(null)}
-                      className="text-xs text-emerald-400 hover:text-emerald-200 underline cursor-pointer"
+                      className="text-xs text-[#1B7C47] hover:text-[#0E3E22] underline cursor-pointer font-bold"
                     >
                       Dismiss
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-200/90 pt-1 font-mono">
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-[#0E3E22] pt-1 font-mono font-semibold">
                     <div>Filename: {uploadResult.filename}</div>
                     <div>Vector Chunks: {uploadResult.chunks_count}</div>
                     <div>Characters: {uploadResult.total_characters}</div>
@@ -414,13 +415,13 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
           {activeTab === "history" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-zinc-400">
-                  Manage indexed documents and click <span className="text-purple-300">"Ask Agent"</span> to chat about specific PDF contents.
+                <p className="text-xs text-[#584134] font-medium">
+                  Manage indexed documents and click <span className="text-[#B84328] font-bold">"Ask Agent"</span> to chat about specific PDF contents.
                 </p>
                 <button
                   onClick={loadDocuments}
                   disabled={isLoadingDocs}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all cursor-pointer"
+                  className="p-1.5 rounded-lg text-[#584134] hover:text-[#1C120C] hover:bg-[#EAE0D2] transition-all cursor-pointer"
                   title="Refresh document list"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDocs ? "animate-spin" : ""}`} />
@@ -428,17 +429,17 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
               </div>
 
               {isLoadingDocs && documents.length === 0 && (
-                <div className="flex items-center justify-center py-12 text-zinc-400 gap-2 text-xs">
-                  <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                <div className="flex items-center justify-center py-12 text-[#584134] gap-2 text-xs">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#B84328]" />
                   <span>Loading indexed documents...</span>
                 </div>
               )}
 
               {!isLoadingDocs && documents.length === 0 && (
-                <div className="text-center py-12 border border-dashed border-zinc-800 rounded-2xl p-8 space-y-2">
-                  <FolderOpen className="w-8 h-8 mx-auto text-zinc-600" />
-                  <p className="text-xs font-medium text-zinc-300">No documents indexed yet</p>
-                  <p className="text-[11px] text-zinc-500">
+                <div className="text-center py-12 border border-dashed border-[#D8C7B4] bg-[#F4ECE0]/50 rounded-2xl p-8 space-y-2">
+                  <FolderOpen className="w-8 h-8 mx-auto text-[#7C6355]" />
+                  <p className="text-xs font-bold text-[#1C120C]">No documents indexed yet</p>
+                  <p className="text-[11px] text-[#584134]">
                     Upload a PDF or text file in the "Upload Document" tab to index knowledge into pgvector.
                   </p>
                 </div>
@@ -449,15 +450,15 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                   {documents.map((doc, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 transition-all"
+                      className="flex items-center justify-between p-3.5 rounded-xl bg-[#F2E9DC] border border-[#D8C7B4] hover:border-[#B84328]/40 transition-all shadow-xs"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                        <div className="p-2 rounded-lg bg-[#EAE0D2] text-[#B84328]">
                           <FileText className="w-4 h-4" />
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-white">{doc.filename}</p>
-                          <div className="flex items-center gap-3 text-[11px] text-zinc-400 font-mono mt-0.5">
+                          <p className="text-xs font-bold text-[#1C120C]">{doc.filename}</p>
+                          <div className="flex items-center gap-3 text-[11px] text-[#584134] font-mono mt-0.5">
                             <span>{doc.chunks_count} chunks</span>
                             {doc.uploaded_at && (
                               <span>
@@ -475,10 +476,10 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleAskAboutDoc(doc.filename)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-xs font-medium transition-all cursor-pointer shadow-sm active:scale-95"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FAF5E8] hover:bg-[#EAE0D2] border border-[#B84328]/50 text-[#B84328] text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
                           title={`Ask questions about ${doc.filename}`}
                         >
-                          <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                          <MessageSquare className="w-3.5 h-3.5 text-[#B84328]" />
                           <span>Ask Agent</span>
                         </button>
 
@@ -487,7 +488,7 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                             setSelectedSourceFilter(doc.filename);
                             setActiveTab("search");
                           }}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all cursor-pointer"
+                          className="p-1.5 rounded-lg text-[#584134] hover:text-[#1C120C] hover:bg-[#EAE0D2] transition-all cursor-pointer"
                           title={`Filter search to ${doc.filename}`}
                         >
                           <Search className="w-3.5 h-3.5" />
@@ -496,11 +497,11 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                         <button
                           onClick={() => handleDeleteDocument(doc.filename)}
                           disabled={deletingFile === doc.filename}
-                          className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer disabled:opacity-50"
+                          className="p-1.5 rounded-lg text-[#7C6355] hover:text-rose-700 hover:bg-rose-100 transition-all cursor-pointer disabled:opacity-50"
                           title={`Delete ${doc.filename} from vector store`}
                         >
                           {deletingFile === doc.filename ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
                           ) : (
                             <Trash2 className="w-3.5 h-3.5" />
                           )}
@@ -536,25 +537,25 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
                       }
                     }}
                     placeholder="Ask a question or enter keywords to test vector similarity..."
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-700/80 text-white text-xs placeholder:text-zinc-500 focus:outline-none focus:border-purple-500"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-[#D8C7B4] text-[#1C120C] text-xs placeholder:text-[#7C6355] focus:outline-none focus:border-[#B84328] font-medium"
                   />
                   <button
                     type="submit"
                     disabled={isSearching || !searchQuery.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                    className="px-4 py-2.5 rounded-xl bg-[#B84328] hover:bg-[#A53920] disabled:opacity-50 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-[#B84328]/20"
                   >
-                    {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                    <span>Search</span>
+                    {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : <Search className="w-3.5 h-3.5 text-white" />}
+                    <span className="text-white font-bold">Search</span>
                   </button>
                 </div>
 
                 {documents.length > 0 && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
+                  <div className="flex items-center gap-2 text-xs text-[#584134] font-medium">
                     <span>Filter Source:</span>
                     <select
                       value={selectedSourceFilter}
                       onChange={(e) => setSelectedSourceFilter(e.target.value)}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-purple-500"
+                      className="bg-white border border-[#D8C7B4] rounded-lg px-2.5 py-1 text-xs text-[#1C120C] focus:outline-none focus:border-[#B84328] font-medium"
                     >
                       <option value="">All Indexed Documents ({documents.length})</option>
                       {documents.map((d, i) => (
@@ -569,23 +570,23 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
 
               {searchResults.length > 0 && (
                 <div className="space-y-3 pt-2">
-                  <p className="text-xs text-zinc-400 font-mono">
+                  <p className="text-xs text-[#584134] font-mono font-semibold">
                     Found {searchResults.length} matching vector chunks:
                   </p>
                   {searchResults.map((r, i) => (
-                    <div key={i} className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px] text-purple-400 font-mono">
+                    <div key={i} className="p-4 rounded-xl bg-[#F2E9DC] border border-[#D8C7B4] space-y-1.5 shadow-xs">
+                      <div className="flex items-center justify-between text-[11px] text-[#B84328] font-mono font-bold">
                         <span>Source: {r.metadata?.source || "internal_doc"}</span>
                         <span>Chunk #{r.metadata?.chunk_index ?? i}</span>
                       </div>
-                      <p className="text-xs text-zinc-300 leading-relaxed">{r.content}</p>
+                      <p className="text-xs text-[#1C120C] leading-relaxed">{r.content}</p>
                     </div>
                   ))}
                 </div>
               )}
 
               {searchSearched && searchResults.length === 0 && !isSearching && (
-                <div className="text-center py-8 text-zinc-500 text-xs">
+                <div className="text-center py-8 text-[#7C6355] text-xs font-medium">
                   No matching vector chunks found for this query in the selected scope.
                 </div>
               )}
@@ -594,14 +595,14 @@ export const KnowledgeModal: React.FC<KnowledgeModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-950/50 flex items-center justify-between text-[11px] text-zinc-400">
+        <div className="px-6 py-3 border-t border-[#D8C7B4] bg-[#F2E9DC] flex items-center justify-between text-[11px] text-[#584134] font-medium">
           <div className="flex items-center gap-2">
-            <Layers className="w-3.5 h-3.5 text-purple-400" />
+            <Layers className="w-3.5 h-3.5 text-[#B84328]" />
             <span>Indexed files are automatically available to the agent via `knowledge_base_retrieval`</span>
           </div>
           <button
             onClick={handleCloseModal}
-            className="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all cursor-pointer"
+            className="px-3.5 py-1.5 rounded-lg bg-[#EAE0D2] hover:bg-[#D8C7B4] text-[#1C120C] text-xs font-bold border border-[#D8C7B4] transition-all cursor-pointer"
           >
             Done
           </button>

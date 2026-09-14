@@ -97,6 +97,14 @@ class UserUpdate(BaseModel):
         return v
 
 
+class UserStats(BaseModel):
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    total_conversations: int = 0
+    total_execution_time_s: float = 0.0
+    total_chunks: int = 0
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,6 +112,7 @@ class UserOut(BaseModel):
     email: EmailStr
     full_name: str | None = ""
     created_at: datetime
+    stats: UserStats | None = None
 
 
 class TokenResponse(BaseModel):

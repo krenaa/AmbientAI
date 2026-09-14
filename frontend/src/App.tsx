@@ -384,7 +384,7 @@ const MainDashboard: React.FC = () => {
                 <form
                   key={conv.id}
                   onSubmit={(e) => handleSaveRename(conv.id, e)}
-                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-zinc-800 border border-cyan-500/80"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#183E6C] shadow-sm"
                 >
                   <input
                     type="text"
@@ -394,11 +394,11 @@ const MainDashboard: React.FC = () => {
                     onKeyDown={(e) => {
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    className="flex-1 bg-transparent text-xs text-white focus:outline-none"
+                    className="flex-1 bg-transparent text-xs text-[#1C120C] font-semibold focus:outline-none placeholder-zinc-500"
                   />
                   <button
                     type="submit"
-                    className="p-1 text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                    className="p-1 text-emerald-600 hover:text-emerald-700 cursor-pointer"
                     title="Save"
                   >
                     <Check className="w-3.5 h-3.5" />
@@ -406,7 +406,7 @@ const MainDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="p-1 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                    className="p-1 text-zinc-500 hover:text-zinc-700 cursor-pointer"
                     title="Cancel"
                   >
                     <X className="w-3.5 h-3.5" />

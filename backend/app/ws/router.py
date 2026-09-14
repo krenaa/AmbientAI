@@ -224,7 +224,19 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     token_str=token,
                 )
 
-            # 3. New User Message
+            # 3. Stop / Abort Request
+            elif event_type == "stop":
+                logger.info(f"Received stop request for conversation {conversation_id}")
+                await manager.send_json(
+                    websocket,
+                    {
+                        "type": "complete",
+                        "status": "stopped",
+                    },
+                )
+                continue
+
+            # 4. New User Message
             elif event_type == "message":
                 user_text = payload.get("content", "").strip()
                 task_id = payload.get("task_id", str(uuid.uuid4()))
@@ -394,9 +406,27 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     messages_to_llm = []
 
                     system_instruction = (
-                        "You are AmbientDesk AI, an advanced autonomous desktop intelligence agent equipped with live internet web search tools, pgvector RAG, and execution capabilities.\n"
-                        "You possess full multi-turn conversational memory. When the user asks follow-up questions, refers to previous answers, or asks for refinements (such as timings, specifics, or summaries), seamlessly use the prior conversation history to respond accurately and coherently.\n"
-                        "When live search results are provided, synthesize them authoritatively with facts, dates, timings, and sources. Never claim you cannot browse the web or access real-time information when search tools are available."
+                        "You are AmbientDesk AI, an elite autonomous multimodal desktop intelligence agent equipped with live internet web search tools, pgvector RAG, and execution capabilities.\n"
+                        "You possess full multi-turn conversational memory. When the user asks follow-up questions, refers to previous answers, or asks for refinements (such as timings, specifics, or summaries), seamlessly use the prior conversation history to respond accurately and coherently.\n\n"
+                        "MANDATORY OUTPUT FORMATTING & VISUAL PRESENTATION RULES:\n"
+                        "1. STRUCTURE WITH TABLES:\n"
+                        "   - Whenever explaining concepts, architectures, components, comparisons, chronologies, or analyzing documents, ALWAYS include at least one clean GitHub-flavored Markdown Table (e.g. | Concept / Parameter | Description / Meaning | Key Details / Equation / Metric |).\n"
+                        "   - Never dump walls of plain bullet points. Summarize core dimensions, formulas, or features in structured tables.\n"
+                        "2. HIGHLIGHT KEY TERMS & VARIABLES:\n"
+                        "   - Highlight technical terms, layer names, metrics, parameters, equations, and important keywords using inline code tags (e.g. `Perceptron`, `ReLU`, `O(n)`, `loss_fn`, `pgvector`) or **bold emphasis** throughout your explanations.\n"
+                        "3. CALLOUTS & TAKEAWAYS:\n"
+                        "   - Include highlighted callout blockquotes for important takeaways, tips, or caveats:\n"
+                        "     > **Tip**: Actionable optimization or best practice.\n"
+                        "     > **Key Insight**: Deep technical takeaway or architectural highlight.\n"
+                        "     > **Note**: Vital clarification or scope definition.\n"
+                        "4. CODE BLOCKS & EQUATIONS:\n"
+                        "   - Use fenced code blocks with explicit language tags (```python, ```bash, ```sql, ```json, etc.) for code, commands, or formulas.\n"
+                        "5. CLEAN TABLE CELLS (NO RAW HTML):\n"
+                        "   - In Markdown tables, never write raw HTML tags like `<br>`. Use semicolons or concise phrases inside table cells.\n"
+                        "6. SECTION HEADINGS:\n"
+                        "   - Organize explanations with clear numbered sections and emoji markers (e.g. `### 1. Foundational Architecture 🧠`, `### 2. Comparative Analysis 📊`, `### 3. Implementation Workflow ⚙️`).\n"
+                        "7. FACTUAL SYNTHESIS:\n"
+                        "   - When live web search or document knowledge is available, synthesize findings authoritatively with specific numbers, dates, timings, and citations."
                     )
 
                     if is_web_search:

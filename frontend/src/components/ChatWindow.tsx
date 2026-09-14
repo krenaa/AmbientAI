@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send,
-  FileText,
   MessageSquare,
   Pencil,
   Trash2,
   Check,
   X,
-  Loader2,
   Paperclip,
   Cpu,
   ChevronDown,
   Sparkles,
   RefreshCw,
   Menu,
+  Square,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -122,6 +121,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     hitlApproval,
     sendMessage,
     sendApproval,
+    stopGenerating,
   } = useWebSocket(conversationId, handleModelFallback);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -160,16 +160,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="p-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-zinc-300 hover:text-white border border-zinc-700/60 md:hidden transition-all cursor-pointer shrink-0 shadow-sm"
+              className="p-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-zinc-600 hover:text-[#1C120C] border border-zinc-700/60 md:hidden transition-all cursor-pointer shrink-0 shadow-sm"
               title="Open Sidebar"
               aria-label="Open Sidebar"
             >
-              <Menu className="w-4 h-4 text-cyan-400" />
+              <Menu className="w-4 h-4 text-[#183E6C]" />
             </button>
           )}
 
+          {/* Mobile Branding: AmbientAI Logo + Name */}
+          <div className="flex md:hidden items-center gap-1.5 shrink-0 pr-1.5 border-r border-zinc-700/50">
+            <div className="w-6 h-6 shrink-0 flex items-center justify-center">
+              <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
+            </div>
+            <span className="font-bold text-xs tracking-tight text-[#1C120C]">AmbientAI</span>
+          </div>
+
           <div className="flex items-center gap-2 min-w-0">
-            <MessageSquare className="w-4 h-4 text-cyan-400 shrink-0" />
+            <MessageSquare className="w-4 h-4 text-[#B84328] shrink-0" />
             {isEditingTitle ? (
               <form onSubmit={handleSaveHeaderTitle} className="flex items-center gap-1.5">
                 <input
@@ -432,44 +440,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     )}
                   </div>
 
-                  {/* Upload PDF Button inside Message Box */}
+                  {/* Upload / Index PDF Button */}
                   <button
                     type="button"
                     onClick={() => setShowKnowledgeModal(true)}
-                    className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-[#1C120C] hover:text-purple-700 text-xs font-semibold border border-zinc-700/70 shadow-sm transition-all cursor-pointer shrink-0"
-                    title="Upload and Index PDF / Document"
+                    className="p-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/90 text-[#1C120C] hover:text-purple-700 border border-zinc-700/60 shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                    title="Attach & Index PDF / Document to Knowledge Base"
                   >
-                    <FileText className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                    <span className="hidden xs:inline">Upload PDF</span>
-                  </button>
-
-                  {/* Paperclip quick attach inside Message Box */}
-                  <button
-                    type="button"
-                    onClick={() => setShowKnowledgeModal(true)}
-                    className="hidden sm:flex p-1.5 text-zinc-400 hover:text-purple-400 rounded-lg hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
-                    title="Attach PDF or Document to Knowledge Base"
-                  >
-                    <Paperclip className="w-4 h-4" />
+                    <Paperclip className="w-4 h-4 text-purple-600" />
                   </button>
                 </div>
 
-                {/* Send Button */}
-                <button
-                  type="submit"
-                  disabled={!inputText.trim() || isProcessing || !!hitlApproval}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
-                  title={isProcessing ? "Agent is processing..." : `Send with ${selectedModelObj?.name || selectedModel}`}
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <>
-                      <span className="text-xs font-semibold text-white">Send</span>
-                      <Send className="w-3.5 h-3.5 text-white" />
-                    </>
-                  )}
-                </button>
+                {/* Send / Stop Button */}
+                {isProcessing ? (
+                  <button
+                    type="button"
+                    onClick={stopGenerating}
+                    className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-md shadow-rose-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 animate-pulse"
+                    title="Stop generating response"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-white text-white" />
+                    <span className="text-xs font-semibold text-white">Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!inputText.trim() || !!hitlApproval}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
+                    title={`Send with ${selectedModelObj?.name || selectedModel}`}
+                  >
+                    <span className="text-xs font-semibold text-white">Send</span>
+                    <Send className="w-3.5 h-3.5 text-white" />
+                  </button>
+                )}
               </div>
             </div>
           </form>
