@@ -82,17 +82,8 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 
 ---
 
-### 5. Live Web Grounding & Multi-Source Research
-<div align="center">
 
-![Live Web Search and Telemetry Trace](docs/images/web_search_trace.png)
-*Real-time web search synthesis displaying live news, timestamps, source attribution, and structured insights.*
-
-</div>
-
----
-
-### 6. Real-Time Profile Overview & Execution Analytics
+### 5. Real-Time Profile Overview & Execution Analytics
 <div align="center">
 
 ![Real-Time Profile Overview](docs/images/profile_overview.png)
@@ -104,7 +95,7 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 
 ---
 
-### 7. Mobile-Optimized Responsive Workspace
+### 6. Mobile-Optimized Responsive Workspace
 <div align="center">
 
 ![Mobile Workspace View](docs/images/mobile_view.png)
