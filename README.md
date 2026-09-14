@@ -98,10 +98,11 @@ Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast wa
 ### 6. Mobile-Optimized Responsive Workspace
 <div align="center">
 
-<img src="docs/images/mobile_view.png" alt="Mobile Workspace Header and RAG" width="340" />&nbsp;&nbsp;&nbsp;&nbsp;
-<img src="docs/images/mobile_view_chat.png" alt="Mobile Conversational Flow and Controls" width="340" />
+<img src="docs/images/mobile_sidebar.png" alt="Mobile Slide-Out Session Drawer" width="280" />&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="docs/images/mobile_view.png" alt="Mobile Workspace Header and RAG" width="280" />&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="docs/images/mobile_view_chat.png" alt="Mobile Conversational Flow and Controls" width="280" />
 
-*Fully responsive mobile layout featuring the AmbientAI squircle brand identity, dynamic model selector, and touch-optimized conversational flow.*
+*Fully responsive mobile layout featuring the slide-out session drawer, the AmbientAI squircle brand identity, dynamic model selector, and touch-optimized conversational flow.*
 
 </div>
 
