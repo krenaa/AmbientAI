@@ -143,6 +143,8 @@ export function useWebSocket(
 
     ws.onclose = () => {
       setIsConnected(false);
+      setIsProcessing(false);
+      setStatusMessage(null);
       // Reconnect after 3s
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();
@@ -151,6 +153,8 @@ export function useWebSocket(
 
     ws.onerror = () => {
       setIsConnected(false);
+      setIsProcessing(false);
+      setStatusMessage(null);
     };
 
     ws.onmessage = (event) => {

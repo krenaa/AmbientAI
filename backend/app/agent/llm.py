@@ -11,10 +11,9 @@ settings = get_settings()
 
 
 GROQ_FALLBACK_MODELS = [
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "gemma2-9b-it",
     "mixtral-8x7b-32768",
+    "gemma2-9b-it",
 ]
 
 
@@ -34,13 +33,18 @@ def get_llm(model_id: Optional[str] = None, temperature: float = 0.2) -> BaseCha
     """Returns the requested model dynamically with resilient secondary fallbacks."""
     fallbacks = []
 
+    # Map unavailable/deprecated Groq models to verified high-speed llama-3.1-8b-instant
+    effective_model_id = model_id
+    if effective_model_id == "llama-3.3-70b-versatile":
+        effective_model_id = "llama-3.1-8b-instant"
+
     # Prepare Gemini fallback if available
     gemini_llm = None
     if settings.GOOGLE_API_KEY:
         try:
             gemini_model_name = (
-                model_id
-                if (model_id and "gemini" in model_id.lower())
+                effective_model_id
+                if (effective_model_id and "gemini" in effective_model_id.lower())
                 else settings.GOOGLE_MODEL
             )
             gemini_llm = ChatGoogleGenerativeAI(
@@ -52,7 +56,7 @@ def get_llm(model_id: Optional[str] = None, temperature: float = 0.2) -> BaseCha
             logger.warning(f"Failed to initialize Gemini: {e}")
 
     # If user explicitly requested a Gemini model
-    if model_id and "gemini" in model_id.lower() and gemini_llm:
+    if effective_model_id and "gemini" in effective_model_id.lower() and gemini_llm:
         if settings.GROQ_API_KEY:
             try:
                 groq_fb = ChatGroq(
@@ -68,8 +72,8 @@ def get_llm(model_id: Optional[str] = None, temperature: float = 0.2) -> BaseCha
     # Primary: Groq model
     if settings.GROQ_API_KEY:
         target_groq_model = (
-            model_id
-            if (model_id and model_id != "auto" and "gemini" not in model_id.lower())
+            effective_model_id
+            if (effective_model_id and effective_model_id != "auto" and "gemini" not in effective_model_id.lower())
             else settings.GROQ_MODEL
         )
         try:

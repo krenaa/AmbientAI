@@ -241,6 +241,8 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                 user_text = payload.get("content", "").strip()
                 task_id = payload.get("task_id", str(uuid.uuid4()))
                 selected_model = payload.get("model")
+                if selected_model == "llama-3.3-70b-versatile":
+                    selected_model = "llama-3.1-8b-instant"
 
                 if not user_text:
                     continue
@@ -558,13 +560,17 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                                             "task_id": task_id,
                                         },
                                     )
-                        except Exception:
-                            res = llm.invoke(messages_to_llm)
-                            full_response = res.content
-                            await manager.send_json(
-                                websocket,
-                                {"type": "token", "content": full_response, "task_id": task_id},
-                            )
+                        except Exception as fb_err:
+                            logger.error(f"Fallback model execution note: {fb_err}")
+                            if not full_response:
+                                full_response = (
+                                    "> ⚠️ **Notice**: Upstream AI inference is temporarily rate-limited or experiencing high traffic. "
+                                    "Please wait a few moments and try your request again."
+                                )
+                                await manager.send_json(
+                                    websocket,
+                                    {"type": "token", "content": full_response, "task_id": task_id},
+                                )
 
                     # Mark completed
                     await manager.send_json(
@@ -577,12 +583,13 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     )
 
                     # Persist assistant response to DB
-                    await save_message_to_db(
-                        conversation_id,
-                        "assistant",
-                        full_response,
-                        token_str=token,
-                    )
+                    if full_response:
+                        await save_message_to_db(
+                            conversation_id,
+                            "assistant",
+                            full_response,
+                            token_str=token,
+                        )
 
     except WebSocketDisconnect:
         manager.disconnect(conversation_id)

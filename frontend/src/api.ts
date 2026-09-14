@@ -150,8 +150,8 @@ export const fetchAvailableModels = async (): Promise<ModelsResponse> => {
       selected_default: "auto",
       models: [
         { id: "auto", name: "⚡ Auto Fallback (Resilient Multi-Model)", provider: "Auto", is_free: true, is_available: true, badge: "Auto Failover" },
-        { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "Google", is_free: true, is_available: true, badge: "Free Tier" },
-        { id: "llama-3.3-70b-versatile", name: "Groq: LLaMA 3.3 70B", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "llama-3.1-8b-instant", name: "Groq: LLaMA 3.1 8B (Instant)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
+        { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "Google", is_free: true, is_available: true, badge: "Free Tier" },
         { id: "gemma2-9b-it", name: "Groq: Gemma 2 9B (Ultra Fast)", provider: "Groq", is_free: true, is_available: true, badge: "Free Tier" },
       ],
     };

@@ -4,7 +4,7 @@
 
 ![AmbientDesk AI Banner](docs/images/banner.jpg)
 
-### **Multi-Agent AI Workspace with Human-in-the-Loop (HITL) Guardrails & Real-Time Streaming**
+### **Autonomous Multi-Agent AI Workspace with Human-in-the-Loop (HITL) Guardrails, pgvector RAG & Real-Time Streaming**
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -14,6 +14,8 @@
 [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF.svg?logo=vite&logoColor=white)](https://vite.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+🚀 **Live Production App:** [https://ambient-ai-steel.vercel.app/](https://ambient-ai-steel.vercel.app/) • ⚙️ **Render Backend API:** [https://ambientdesk-backend.onrender.com/](https://ambientdesk-backend.onrender.com/)
+
 [Quick Start](#-quick-start-native-execution) • [Key Features](#-key-features) • [System Architecture](#-system-architecture) • [Showcase Prompts](#-showcase-prompts-to-test-the-system) • [Deployment Guide](DEPLOYMENT.md)
 
 </div>
@@ -22,23 +24,25 @@
 
 ## 📌 Overview
 
-**AmbientDesk AI** is an intelligent agent workspace built to route, research, and execute complex multi-step tasks while keeping humans in control with **Human-in-the-Loop (HITL)** approvals.
+**AmbientDesk AI** is an enterprise-grade multimodal desktop intelligence workspace engineered to route, research, index, and execute multi-step tasks autonomously while keeping humans securely in the loop with **Human-in-the-Loop (HITL)** approvals.
 
-Built on a lightweight, high-speed **FastAPI + LangGraph** async backend and a modern **React 19 + TypeScript** interface:
-1. **Smart Intent Routing**: Automatically classifies queries into direct answers, live web research, internal database search (`pgvector`), or sensitive operations.
-2. **Human-in-the-Loop (HITL) Guardrails**: Automatically pauses before sensitive side-effects (sending emails, alerts, or state modifications) to request explicit human authorization.
-3. **Resilient Multi-Model Fallbacks**: Chained inference using **Groq** (`llama-3.1-8b-instant`) with automatic fallback to **Google Gemini** (`gemini-2.5-flash`, `gemini-3.6-flash`).
-4. **Real-Time Streaming**: Native WebSockets stream reasoning steps, tool telemetry, and tokens directly to the UI.
+Built on an asynchronous **FastAPI + LangGraph** backend with a high-contrast warm-sand **React 19 + TypeScript** studio:
+1. **Smart Autonomous Intent Routing**: Automatically classifies queries into direct responses, live web search grounding, internal document search (`pgvector`), or sensitive operations.
+2. **Human-in-the-Loop (HITL) Guardrails**: Automatically pauses prior to state-changing or sensitive actions (sending notifications, altering database states) to request explicit human approval.
+3. **Resilient Multi-Model Fallbacks**: Chained inference using **Groq** (`llama-3.1-8b-instant`) with automatic fallback to **Google Gemini** (`gemini-2.5-flash-lite`, `gemini-2.5-flash`).
+4. **Real-Time Streaming & Telemetry**: Native WebSockets stream live thinking indicators, tool execution steps, and tokens with an interactive **Stop Generation** control.
+5. **Rich Markdown & Structured Tables**: Auto-formats comparisons, equations, and chronologies into clean tables, highlighted keyword pills (`code`), and callout cards.
+6. **Live Execution Analytics**: Dynamic profile dashboard tracking real-time tasks, compute time in seconds, vector database chunks, and active sessions.
 
 ---
 
 ## 📸 Application Interface & Visual Walkthrough
 
-### 1. Interactive Workspace & Session Dashboard
+### 1. Interactive Workspace & Rich Markdown Output
 <div align="center">
 
 ![Interactive Workspace Home Screen](docs/images/home_screen.png)
-*Clean modern chat interface with real-time streaming, conversation history, and dynamic intent badges.*
+*Clean modern chat interface with real-time streaming, GitHub-flavored Markdown tables, highlighted key terms, and the interactive Stop generation button.*
 
 </div>
 
@@ -50,19 +54,19 @@ Built on a lightweight, high-speed **FastAPI + LangGraph** async backend and a m
 ![Human in the Loop Approval Card](docs/images/hitl.png)
 
 ![Human in the Loop Approval Popup Dialog](docs/images/hitl_popup.png)
-*When sensitive operations (like sending notifications or modifying records) are triggered, the engine pauses and requests human review before proceeding.*
+*When sensitive operations are detected, execution pauses and requests supervisor review via Approve (`✓`) or Reject (`✗`) buttons before executing.*
 
 </div>
 
 ---
 
-### 3. Knowledge Base & PDF RAG Ingestion
+### 3. Knowledge Base & PDF RAG Ingestion (High Contrast)
 <div align="center">
 
 ![Knowledge Base PDF Ingestion](docs/images/rag_pdf_upload.png)
 
 ![Document Indexed Successfully](docs/images/rag_pdf_indexed.png)
-*Upload PDFs, research papers, or documentation into pgvector with automated chunking, embeddings, and document management.*
+*Drag-and-drop PDF ingestion modal with high-contrast text, automated text chunking, and 768-dim vector embeddings persisted in Neon PostgreSQL.*
 
 </div>
 
@@ -72,17 +76,37 @@ Built on a lightweight, high-speed **FastAPI + LangGraph** async backend and a m
 <div align="center">
 
 ![Vector Semantic Search Trace](docs/images/rag_search_trace.png)
-*Test vector similarity search in real-time across indexed documents with source attribution and chunk filtering.*
+*Live cosine similarity search across indexed documents with source attribution and chunk extraction.*
 
 </div>
 
 ---
 
-### 5. Live Web Search & Multi-Step Reasoning Trace
+### 5. Live Web Grounding & Multi-Source Research
 <div align="center">
 
 ![Live Web Search and Telemetry Trace](docs/images/web_search_trace.png)
-*Step-by-step tool execution trace displaying live web search results, source URLs, and knowledge synthesis.*
+*Real-time web search synthesis displaying live news, timestamps, source attribution, and structured insights.*
+
+</div>
+
+---
+
+### 6. Real-Time Profile Overview & Execution Analytics
+<div align="center">
+
+![Real-Time Profile Overview](docs/images/profile_overview.png)
+*Live execution metrics calculating total executions, completed tasks, compute duration, vector chunks, and session history directly from PostgreSQL.*
+
+</div>
+
+---
+
+### 7. Mobile-Optimized Responsive Workspace
+<div align="center">
+
+![Mobile Workspace View](docs/images/mobile_view.png)
+*Fully responsive mobile layout featuring AmbientAI squircle branding and quick drawer navigation.*
 
 </div>
 
