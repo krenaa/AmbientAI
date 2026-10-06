@@ -112,24 +112,147 @@ def sanitize_text(text: str) -> str:
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extracts text content from PDF binary bytes using pypdf."""
+    """Extracts text content from PDF binary bytes using a robust fallback chain:
+    1. Primary: PyMuPDF (fitz)
+    2. Fallback: pypdf
+    3. Image-based OCR Fallback (if text < 50 chars/page): PyMuPDF rendering + Vision OCR / pytesseract
+    4. Descriptive error if all fail.
+    """
+    if not file_bytes:
+        raise ValueError("Uploaded PDF file is empty (0 bytes received).")
+
+    extracted_pages = []
+    total_pages = 0
+
+    # 1. Primary Extractor: PyMuPDF (fitz)
+    try:
+        import pymupdf  # PyMuPDF
+        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+        total_pages = len(doc)
+        for idx, page in enumerate(doc):
+            t = page.get_text("text") or ""
+            clean_t = sanitize_text(t).strip()
+            if clean_t:
+                extracted_pages.append(f"[Page {idx + 1}]\n{clean_t}")
+
+        total_extracted_chars = sum(len(p) for p in extracted_pages)
+        avg_chars_per_page = total_extracted_chars / max(1, total_pages)
+
+        if total_extracted_chars > 0 and avg_chars_per_page >= 50:
+            logger.info(
+                f"PDF extraction succeeded with PyMuPDF primary extractor: {total_pages} pages, {total_extracted_chars} chars (avg {avg_chars_per_page:.1f}/page)."
+            )
+            return "\n\n".join(extracted_pages)
+        else:
+            logger.info(
+                f"PyMuPDF yielded low text ({total_extracted_chars} chars, avg {avg_chars_per_page:.1f}/page across {total_pages} pages). Attempting pypdf secondary extractor..."
+            )
+    except Exception as mupdf_err:
+        logger.warning(f"PyMuPDF primary extraction error: {mupdf_err}. Attempting pypdf fallback...")
+
+    # 2. Secondary Extractor: pypdf
     try:
         import pypdf
         reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-        extracted_pages = []
+        total_pages = len(reader.pages)
+        pypdf_pages = []
         for idx, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            clean_text = sanitize_text(text).strip()
-            if clean_text:
-                extracted_pages.append(f"[Page {idx + 1}]\n{clean_text}")
-        return "\n\n".join(extracted_pages)
-    except Exception as e:
-        logger.error(f"Error parsing PDF file: {e}")
-        # Fallback to UTF-8 decoding if plaintext or basic format
+            t = page.extract_text() or ""
+            clean_t = sanitize_text(t).strip()
+            if clean_t:
+                pypdf_pages.append(f"[Page {idx + 1}]\n{clean_t}")
+
+        total_pypdf_chars = sum(len(p) for p in pypdf_pages)
+        avg_pypdf = total_pypdf_chars / max(1, total_pages)
+        if total_pypdf_chars > 0 and avg_pypdf >= 50:
+            logger.info(
+                f"PDF extraction succeeded with pypdf secondary extractor: {total_pages} pages, {total_pypdf_chars} chars (avg {avg_pypdf:.1f}/page)."
+            )
+            return "\n\n".join(pypdf_pages)
+    except Exception as pypdf_err:
+        logger.warning(f"pypdf secondary extraction note: {pypdf_err}")
+
+    # 3. Image-based OCR Fallback Chain (if text is empty or < 50 chars/page)
+    logger.info(
+        "PDF text is under 50 chars per page. Treating document as scanned/image-based PDF. Invoking OCR fallback chain..."
+    )
+
+    ocr_pages = []
+    # A) Try pytesseract if installed locally
+    try:
+        import pytesseract
+        from PIL import Image
+        import pymupdf
+        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+        max_ocr_pages = min(len(doc), 15)
+        for idx in range(max_ocr_pages):
+            page = doc[idx]
+            pix = page.get_pixmap(dpi=150)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            ocr_text = pytesseract.image_to_string(img)
+            clean_ocr = sanitize_text(ocr_text).strip()
+            if clean_ocr:
+                ocr_pages.append(f"[Page {idx + 1} (OCR)]\n{clean_ocr}")
+
+        if ocr_pages:
+            logger.info(f"PDF extraction succeeded with pytesseract OCR ({len(ocr_pages)} pages extracted).")
+            return "\n\n".join(ocr_pages)
+    except Exception as tesseract_err:
+        logger.debug(f"Pytesseract unavailable: {tesseract_err}")
+
+    # B) Try Gemini 2.5 Flash Lite Multimodal Vision OCR (Serverless / Cloud Resilient)
+    if settings.GOOGLE_API_KEY:
         try:
-            return sanitize_text(file_bytes.decode("utf-8", errors="ignore"))
-        except Exception:
-            raise ValueError(f"Could not parse document: {str(e)}")
+            import base64
+            import pymupdf
+            from langchain_core.messages import HumanMessage
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            vision_llm = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash-lite",
+                google_api_key=settings.GOOGLE_API_KEY,
+                temperature=0.0,
+                max_retries=1,
+            )
+
+            doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+            max_vision_pages = min(len(doc), 10)  # Safe budget for serverless timeout
+            for idx in range(max_vision_pages):
+                page = doc[idx]
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                b64_img = base64.b64encode(img_bytes).decode("utf-8")
+
+                msg = HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract all readable text, tables, architecture components, and diagrams from this page verbatim. "
+                                "Preserve section headers, bullet lists, and technical specifications accurately."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{b64_img}"},
+                        },
+                    ]
+                )
+                page_res = vision_llm.invoke([msg])
+                clean_ocr = sanitize_text(page_res.content if hasattr(page_res, "content") else str(page_res)).strip()
+                if clean_ocr:
+                    ocr_pages.append(f"[Page {idx + 1} (Vision OCR)]\n{clean_ocr}")
+
+            if ocr_pages:
+                logger.info(f"PDF extraction succeeded with Gemini Vision OCR fallback ({len(ocr_pages)} pages extracted).")
+                return "\n\n".join(ocr_pages)
+        except Exception as vision_err:
+            logger.warning(f"Vision OCR fallback encountered an error: {vision_err}")
+
+    # 4. If all fail: Return specific, actionable error message
+    raise ValueError(
+        "This PDF looks scanned/image-only and OCR isn't available. Export it as a text-based PDF, or upload .md/.txt"
+    )
 
 
 def chunk_text(text: str, chunk_size: int = 700, overlap: int = 150) -> List[str]:
@@ -205,6 +328,30 @@ async def ingest_pdf(
     for i in range(0, len(docs), batch_size):
         batch = docs[i:i + batch_size]
         vector_store.add_documents(batch)
+
+    # Also persist to document_chunks table for dual-table compatibility
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.models.document import DocumentChunk
+        from app.retrieval.embeddings import get_embedding_model
+        async with AsyncSessionLocal() as db:
+            embedder = get_embedding_model()
+            chunk_texts = [d.page_content for d in docs]
+            try:
+                embeddings = embedder.embed_documents(chunk_texts)
+            except Exception:
+                embeddings = [embedder.embed_query(c) for c in chunk_texts]
+
+            for d, emb in zip(docs, embeddings):
+                db.add(DocumentChunk(
+                    content=d.page_content,
+                    embedding=emb,
+                    source=clean_filename,
+                    user_id=user_id or "system",
+                ))
+            await db.commit()
+    except Exception as db_sync_err:
+        logger.debug(f"Notice on document_chunks dual persistence: {db_sync_err}")
 
     logger.info(f"Successfully ingested {len(docs)} chunks for PDF '{clean_filename}'.")
 

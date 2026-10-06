@@ -108,8 +108,8 @@ class UserStats(BaseModel):
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    email: EmailStr
+    id: str | UUID
+    email: str
     full_name: str | None = ""
     created_at: datetime
     stats: UserStats | None = None

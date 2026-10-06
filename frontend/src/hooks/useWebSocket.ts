@@ -6,6 +6,9 @@ import { API_BASE_URL, getMessages, getAuthToken } from "../services/api";
 export interface HITLApprovalState {
   taskId: string;
   prompt: string;
+  toolName?: string;
+  target?: string;
+  payload?: Record<string, any>;
 }
 
 // Module-level in-memory cache + session storage for instant 0ms switching
@@ -221,6 +224,9 @@ export function useWebSocket(
           setHitlApproval({
             taskId: payload.task_id || "task-" + Date.now(),
             prompt: promptText,
+            toolName: (payload as any).tool_name,
+            target: (payload as any).target,
+            payload: (payload as any).payload,
           });
           toast("Action paused — Human approval needed!", {
             icon: "⚠️",

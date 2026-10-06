@@ -268,6 +268,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="px-6 pb-2">
           <ApprovalPrompt
             prompt={hitlApproval.prompt}
+            toolName={hitlApproval.toolName}
+            target={hitlApproval.target}
+            payload={hitlApproval.payload}
             onApprove={() => sendApproval("approved")}
             onReject={() => sendApproval("rejected")}
             isProcessing={isProcessing}

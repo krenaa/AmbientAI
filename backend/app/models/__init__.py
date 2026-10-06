@@ -2,6 +2,7 @@ from app.models.user import User
 from app.models.conversation import Conversation, Message
 from app.models.task import Task
 from app.models.document import DocumentChunk
+from app.models.execution import Execution
 
 __all__ = [
     "User",
@@ -9,4 +10,5 @@ __all__ = [
     "Message",
     "Task",
     "DocumentChunk",
+    "Execution",
 ]

@@ -85,6 +85,21 @@ async def init_db() -> None:
                     END $$;
                 """))
                 await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_conversations_user_id ON conversations(user_id);"))
+                # Ensure executions table exists
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS executions (
+                        id UUID PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        session_id VARCHAR(255) NOT NULL,
+                        status VARCHAR(50) NOT NULL DEFAULT 'running',
+                        started_at TIMESTAMPTZ NOT NULL,
+                        finished_at TIMESTAMPTZ,
+                        duration_ms INTEGER NOT NULL DEFAULT 0,
+                        tool_used VARCHAR(100)
+                    );
+                """))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_executions_user_id ON executions(user_id);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_executions_session_id ON executions(session_id);"))
             except Exception as e:
                 logger.debug(f"Column migration check note: {e}")
             _db_initialized = True

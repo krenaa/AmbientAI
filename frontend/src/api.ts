@@ -116,7 +116,9 @@ export const login = async (
 };
 
 export const fetchCurrentUser = async () => {
-  const res = await apiClient.get("/auth/me");
+  const res = await apiClient.get(`/auth/me?_t=${Date.now()}`, {
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
   sessionStorage.setItem("ambient_user", JSON.stringify(res.data));
   localStorage.setItem("ambient_user", JSON.stringify(res.data));
   return res.data;

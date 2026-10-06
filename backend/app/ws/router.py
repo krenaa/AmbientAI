@@ -1,7 +1,9 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
 import re
+import time
 import uuid
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -9,13 +11,26 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import Command
 from sqlalchemy import select
 
+from app.agent.doc_matcher import (
+    find_matching_document,
+    fetch_document_content,
+    get_all_indexed_documents,
+)
 from app.agent.graph import create_agent_graph, memory_saver
 from app.agent.llm import get_llm
+from app.agent.math_solver import handle_math_calculation
+from app.agent.prompts import (
+    build_system_instruction,
+    check_graceful_refusal,
+    is_what_can_you_do_query,
+)
+from app.agent.registry import registry, ToolRisk
 from app.agent.tools import calculate_expression, web_search
 from app.core.config import get_settings
 from app.core.security import decode_access_token, verify_clerk_token
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
+from app.models.execution import Execution
 from app.models.task import Task
 from app.retrieval.service import similarity_search
 
@@ -195,12 +210,13 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     },
                 )
 
-                # Resume the interrupted graph
+                # Resume the interrupted graph with human approval decision
                 resume_cmd = Command(resume={"action": decision})
                 res = graph.invoke(resume_cmd, config=thread_config)
 
                 output_msg = res["messages"][-1].content
-                # Stream the final response
+
+                # Stream the synthesized final response
                 await manager.send_json(
                     websocket,
                     {"type": "token", "content": output_msg},
@@ -214,22 +230,29 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     },
                 )
 
-                # Persist to database
-                try:
-                    conv_uuid = uuid.UUID(conversation_id)
-                except ValueError:
-                    conv_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, conversation_id)
+                # Update Execution record in DB
                 try:
                     async with AsyncSessionLocal() as db:
-                        task = Task(
-                            conversation_id=conv_uuid,
-                            status="approved" if decision == "approved" else "rejected",
+                        stmt = (
+                            select(Execution)
+                            .where(Execution.session_id == conversation_id, Execution.user_id == user_id)
+                            .order_by(Execution.started_at.desc())
+                            .limit(1)
                         )
-                        db.add(task)
-                        await db.commit()
-                except Exception as db_err:
-                    logger.debug(f"DB task record note: {db_err}")
+                        exec_res = await db.execute(stmt)
+                        exec_rec = exec_res.scalar_one_or_none()
+                        if exec_rec:
+                            exec_rec.status = "completed" if decision == "approved" else "rejected"
+                            exec_rec.finished_at = datetime.now(timezone.utc)
+                            if exec_rec.started_at:
+                                exec_rec.duration_ms = int(
+                                    (exec_rec.finished_at - exec_rec.started_at).total_seconds() * 1000
+                                )
+                            await db.commit()
+                except Exception as exec_up_err:
+                    logger.debug(f"Execution resume record update note: {exec_up_err}")
 
+                # Save assistant response to DB
                 await save_message_to_db(
                     conversation_id,
                     "assistant",
@@ -266,6 +289,39 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                 if not user_text:
                     continue
 
+                start_perf = time.perf_counter()
+                execution_uuid = uuid.uuid4()
+
+                # Persist execution start in DB immediately (Requirement 7)
+                try:
+                    async with AsyncSessionLocal() as db:
+                        new_exec = Execution(
+                            id=execution_uuid,
+                            user_id=user_id,
+                            session_id=conversation_id,
+                            status="running",
+                            started_at=datetime.now(timezone.utc),
+                        )
+                        db.add(new_exec)
+                        await db.commit()
+                except Exception as exec_init_err:
+                    logger.debug(f"Execution start persist note: {exec_init_err}")
+
+                async def finalize_execution(status: str, tool_used: Optional[str] = None):
+                    dur_ms = int((time.perf_counter() - start_perf) * 1000)
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            rec = await db.get(Execution, execution_uuid)
+                            if rec:
+                                rec.status = status
+                                rec.finished_at = datetime.now(timezone.utc)
+                                rec.duration_ms = dur_ms
+                                if tool_used:
+                                    rec.tool_used = tool_used
+                                await db.commit()
+                    except Exception as fin_err:
+                        logger.debug(f"Execution finalize note: {fin_err}")
+
                 await manager.send_json(
                     websocket,
                     {
@@ -285,187 +341,72 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     default_title=user_text[:30],
                 )
 
-                # Retrieve multi-turn conversation memory (prior turns)
+                # Retrieve conversation history
                 conversation_history = await get_conversation_history(conversation_id, user_id=user_id, limit=10)
 
-                lowered_text = user_text.lower().strip()
-                is_explicit_rag = any(
-                    kw in lowered_text
-                    for kw in [
-                        "retrieve internal knowledge",
-                        "knowledge base",
-                        "internal doc",
-                        "pgvector",
-                        "ingested doc",
-                    ]
-                )
+                # Retrieve currently indexed documents across knowledge base
+                available_docs = get_all_indexed_documents()
+                system_instruction = build_system_instruction(available_docs)
 
-                # Only run RAG if explicit RAG or if there's no ongoing history, avoiding hijacking short conversational follow-ups
-                context_chunks = []
-                is_followup = bool(conversation_history) and len(user_text.split()) <= 6 and not is_explicit_rag
-                if not is_followup:
-                    try:
-                        async with AsyncSessionLocal() as db:
-                            chunks = await similarity_search(user_text, db=db, limit=2)
-                            context_chunks = [c.content for c in chunks]
-                    except Exception as e:
-                        logger.debug(f"RAG search note: {e}")
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK A: Capability Refusal (Requirement 3)
+                # -------------------------------------------------------------
+                refusal_msg = check_graceful_refusal(user_text)
+                if refusal_msg:
+                    await manager.send_json(websocket, {"type": "token", "content": refusal_msg, "task_id": task_id})
+                    await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                    await save_message_to_db(conversation_id, "assistant", refusal_msg, user_id=user_id)
+                    await finalize_execution(status="completed", tool_used="capability_refusal")
+                    continue
 
-                augmented_text = user_text
-                if context_chunks:
-                    rag_context = "\n".join(context_chunks)
-                    augmented_text = f"Context from knowledge base:\n{rag_context}\n\nUser Question:\n{user_text}"
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK B: "What Can You Do?" (Requirement 3)
+                # -------------------------------------------------------------
+                if is_what_can_you_do_query(user_text):
+                    cap_msg = registry.format_capabilities_summary()
+                    await manager.send_json(websocket, {"type": "token", "content": cap_msg, "task_id": task_id})
+                    await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                    await save_message_to_db(conversation_id, "assistant", cap_msg, user_id=user_id)
+                    await finalize_execution(status="completed", tool_used="capability_overview")
+                    continue
 
-                # Run the LangGraph StateGraph with fast intent check
-                state = {
-                    "messages": [HumanMessage(content=augmented_text)],
-                    "task_id": task_id,
-                    "requires_approval": False,
-                    "approval_prompt": None,
-                    "approval_status": None,
-                    "action_type": None,
-                    "stream_handled": True,
-                }
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK C: Math / Calculator / Interest (Requirement 4)
+                # -------------------------------------------------------------
+                math_result = handle_math_calculation(user_text)
+                if math_result:
+                    await manager.send_json(websocket, {"type": "token", "content": math_result, "task_id": task_id})
+                    await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                    await save_message_to_db(conversation_id, "assistant", math_result, user_id=user_id)
+                    await finalize_execution(status="completed", tool_used="ast_math")
+                    continue
 
-                # Invoke graph up to interrupt or END
-                graph.invoke(state, config=thread_config)
-                snapshot = graph.get_state(thread_config)
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK D: Document-Aware Q&A (Requirement 5)
+                # -------------------------------------------------------------
+                matched_doc, detected_ref = find_matching_document(user_text, available_docs)
+                if detected_ref:
+                    if matched_doc:
+                        doc_filename = matched_doc["filename"]
+                        doc_content, chunk_count = fetch_document_content(doc_filename)
 
-                # Check if graph paused on interrupt
-                if snapshot.tasks and len(snapshot.tasks) > 0 and snapshot.tasks[0].interrupts:
-                    interrupt_val = snapshot.tasks[0].interrupts[0].value
-                    prompt = interrupt_val.get("prompt", "Approval required")
-                    await manager.send_json(
-                        websocket,
-                        {
-                            "type": "interrupt",
-                            "status": "awaiting_approval",
-                            "prompt": prompt,
-                            "task_id": task_id,
-                        },
-                    )
-                else:
-                    # Check for tool invocations (Live Web Search, AST Math, or pgvector RAG / Follow-up)
-                    # 1. Comprehensive Live Web Search detection
-                    is_web_search = False
-                    search_query = ""
-
-                    explicit_prefixes = [
-                        "search the live web for:",
-                        "search the live web for",
-                        "search the live web:",
-                        "search the live web",
-                        "search the web for:",
-                        "search the web for",
-                        "search the web:",
-                        "search the web",
-                        "search live web:",
-                        "search live web",
-                        "search web for:",
-                        "search web for",
-                        "search web:",
-                        "search web",
-                        "web search:",
-                        "web search for:",
-                        "web search",
-                    ]
-                    for pfx in explicit_prefixes:
-                        if lowered_text.startswith(pfx):
-                            is_web_search = True
-                            search_query = user_text[len(pfx):].strip(" :")
-                            break
-
-                    if not is_web_search:
-                        # Match natural verbs (including common typos like 'serch')
-                        search_verbs = ["search", "serch", "lookup", "look up", "browse", "google", "find online", "fetch online"]
-                        has_search_verb = any(v in lowered_text for v in search_verbs)
-
-                        live_keywords = [
-                            "latest", "recent", "current", "today", "breaking",
-                            "real-time", "realtime", "timing", "timings", "headlines",
-                            "news", "weather", "stock price", "scores"
-                        ]
-                        has_live_keyword = any(k in lowered_text for k in live_keywords)
-
-                        # Contextual follow-up: e.g. "okay serch for it now", "search it", "look it up"
-                        is_search_followup = has_search_verb and any(pron in lowered_text for pron in ["it", "this", "them", "that", "now"])
-
-                        if is_search_followup and conversation_history:
-                            prior_context = ""
-                            for prev_msg in reversed(conversation_history):
-                                if hasattr(prev_msg, "content") and prev_msg.content:
-                                    prior_context = prev_msg.content[:80]
-                                    break
-                            clean_prior = re.sub(r"^(?:search\s+(?:the\s+)?(?:live\s+)?web\s+(?:for\s+)?)+", "", prior_context, flags=re.IGNORECASE).strip(" :")
-                            clean_followup = re.sub(r"\b(okay|ok|please|serch|search|for|it|now|find|look|up)\b", "", user_text, flags=re.IGNORECASE).strip()
-                            effective = f"{clean_prior} {clean_followup}".strip() if clean_followup else f"{clean_prior} latest updates"
-                            is_web_search = True
-                            search_query = effective
-                        elif has_live_keyword and any(term in lowered_text for term in ["news", "weather", "today", "latest", "breaking", "update", "updates", "timing", "timings", "gujarat"]):
-                            cleaned = re.sub(r"^(?:can\s+you\s+)?(?:please\s+)?(?:give|tell|show|fetch|get|find)\s+(?:me\s+)?", "", user_text, flags=re.IGNORECASE).strip(" :")
-                            if conversation_history and any(w in lowered_text for w in ["timing", "timings", "it", "them", "those", "update", "updates"]):
-                                prior_context = ""
-                                for prev_msg in reversed(conversation_history):
-                                    if hasattr(prev_msg, "content") and prev_msg.content:
-                                        prior_context = prev_msg.content[:60]
-                                        break
-                                clean_prior = re.sub(r"^(?:search\s+(?:the\s+)?(?:live\s+)?web\s+(?:for\s+)?)+", "", prior_context, flags=re.IGNORECASE).strip(" :")
-                                cleaned = f"{clean_prior} {cleaned}".strip()
-                            is_web_search = True
-                            search_query = cleaned or user_text
-                        else:
-                            # General regex search pattern
-                            match = re.search(
-                                r"(?:please\s+)?(?:search|serch)\s+(?:the\s+)?(?:live\s+)?(?:web|internet|online)?\s*(?:for\s+)?(.+)",
-                                user_text,
-                                re.IGNORECASE,
+                        if chunk_count == 0:
+                            zero_chunk_msg = (
+                                f"Document **{doc_filename}** exists in your history, but indexing failed and contains 0 chunks. "
+                                "Please delete and re-upload it via the Knowledge Base panel."
                             )
-                            if match and match.group(1).strip():
-                                is_web_search = True
-                                search_query = match.group(1).strip(" :")
-
-                    messages_to_llm = []
-
-                    system_instruction = (
-                        "You are AmbientDesk AI, an autonomous multimodal desktop intelligence agent equipped with live internet web search tools, pgvector RAG, and execution capabilities.\n"
-                        "You possess full multi-turn conversational memory. When the user asks follow-up questions, refers to previous answers, or asks for refinements, seamlessly use the prior conversation history to respond accurately and coherently.\n\n"
-                        "RESPONSE GUIDELINES & PRESENTATION:\n"
-                        "1. NATURAL & BALANCED FORMATTING (DO NOT FORCE TABLES OR CODE BOXES):\n"
-                        "   - Only include Markdown tables when comparing items, presenting structured multi-attribute metrics, specifications, or chronologies where a table genuinely improves readability. Do NOT force tables into simple questions, conversational explanations, or narratives.\n"
-                        "   - Only provide code blocks when code, scripts, commands, configuration, or formulas are explicitly requested or genuinely required to solve the task. Do NOT wrap general conversational text or explanations in code boxes.\n"
-                        "2. EMPHASIS & CLARITY:\n"
-                        "   - Highlight technical terms, parameters, metrics, and key variables naturally using inline code tags (e.g. `Perceptron`, `ReLU`, `O(n)`) or **bold emphasis**.\n"
-                        "   - Organize longer explanations with clean numbered sections or clear bullet points.\n"
-                        "3. CALLOUTS & TAKEAWAYS:\n"
-                        "   - When helpful, provide highlighted blockquotes for critical takeaways, caveats, or tips (> **Key Insight**: or > **Tip**:).\n"
-                        "4. FACTUAL SYNTHESIS:\n"
-                        "   - When live web search or document knowledge is available, synthesize findings authoritatively with specific numbers, dates, timings, and citations."
-                    )
-
-                    if is_web_search:
-                        effective_query = search_query if search_query else user_text
-                        await manager.send_json(
-                            websocket,
-                            {
-                                "type": "status",
-                                "status": "processing",
-                                "content": f"Searching live web for: '{effective_query[:40]}'...",
-                                "task_id": task_id,
-                            },
-                        )
-
-                        try:
-                            search_results = await asyncio.to_thread(web_search.invoke, effective_query)
-                        except Exception as search_err:
-                            logger.error(f"Error during live web search: {search_err}")
-                            search_results = f"Search temporarily unavailable: {search_err}"
+                            await manager.send_json(websocket, {"type": "token", "content": zero_chunk_msg, "task_id": task_id})
+                            await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                            await save_message_to_db(conversation_id, "assistant", zero_chunk_msg, user_id=user_id)
+                            await finalize_execution(status="completed", tool_used="doc_rag_failed")
+                            continue
 
                         await manager.send_json(
                             websocket,
                             {
                                 "type": "status",
                                 "status": "processing",
-                                "content": "Synthesizing live web insights...",
+                                "content": f"Analyzing document '{doc_filename}'...",
                                 "task_id": task_id,
                             },
                         )
@@ -476,131 +417,291 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                             + [
                                 HumanMessage(
                                     content=(
-                                        f"Live Web Search Results for query '{effective_query}':\n"
-                                        f"{search_results}\n\n"
-                                        f"Original User Request:\n{user_text}\n\n"
-                                        "Synthesize these live search findings and present a comprehensive answer."
+                                        f"The user is asking about the document '{doc_filename}'.\n\n"
+                                        f"--- DOCUMENT CONTENT: '{doc_filename}' ---\n"
+                                        f"{doc_content}\n"
+                                        f"--- END DOCUMENT CONTENT ---\n\n"
+                                        f"User Question:\n{user_text}\n\n"
+                                        "Answer the user's question accurately based on the document content above."
                                     )
                                 )
                             ]
                         )
 
-                    # 2. AST Math Calculation detection
-                    elif lowered_text.startswith("calculate the formula") or lowered_text.startswith("calculate "):
-                        expr = (
-                            user_text[len("calculate the formula"):].strip(" :")
-                            if lowered_text.startswith("calculate the formula")
-                            else user_text[len("calculate"):].strip(" :")
-                        )
-                        await manager.send_json(
-                            websocket,
-                            {
-                                "type": "status",
-                                "status": "processing",
-                                "content": "Computing expression with AST Math engine...",
-                                "task_id": task_id,
-                            },
-                        )
-                        math_result = calculate_expression.invoke(expr)
-                        messages_to_llm = (
-                            [SystemMessage(content=system_instruction)]
-                            + conversation_history
-                            + [HumanMessage(content=f"Expression: {expr}\nEvaluated Result: {math_result}\nUser Query: {user_text}")]
-                        )
+                        # Stream tokens with chosen model
+                        llm = get_llm(model_id=selected_model)
+                        doc_answer = ""
+                        try:
+                            async for chunk in llm.astream(messages_to_llm):
+                                t_text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                                if t_text:
+                                    doc_answer += t_text
+                                    await manager.send_json(
+                                        websocket,
+                                        {"type": "token", "content": t_text, "task_id": task_id},
+                                    )
+                        except Exception as doc_stream_err:
+                            logger.warning(f"Error streaming document Q&A: {doc_stream_err}")
+                            if not doc_answer:
+                                doc_answer = "Encountered an inference error analyzing the document. Please retry with an alternative model."
+                                await manager.send_json(
+                                    websocket,
+                                    {"type": "token", "content": doc_answer, "task_id": task_id},
+                                )
 
-                    # 3. Default: multi-turn follow-up, pgvector RAG context, or general inquiry
+                        await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                        await save_message_to_db(conversation_id, "assistant", doc_answer, user_id=user_id)
+                        await finalize_execution(status="completed", tool_used="doc_rag")
+                        continue
+
                     else:
-                        messages_to_llm = (
-                            [SystemMessage(content=system_instruction)]
-                            + conversation_history
-                            + [HumanMessage(content=augmented_text)]
+                        # Document was explicitly named, but NOT found in indexed documents
+                        doc_list_md = (
+                            "\n".join(f"- `{d['filename']}` ({d.get('chunks_count', 0)} chunks)" for d in available_docs)
+                            if available_docs
+                            else "No documents currently indexed."
                         )
+                        missing_doc_msg = (
+                            f"Document **{detected_ref}** was not found in your indexed documents.\n\n"
+                            f"**Currently Available Documents:**\n{doc_list_md}\n\n"
+                            f"> 📁 **To analyze '{detected_ref}'**: Please upload it via the **Knowledge Base** panel in the sidebar."
+                        )
+                        await manager.send_json(websocket, {"type": "token", "content": missing_doc_msg, "task_id": task_id})
+                        await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                        await save_message_to_db(conversation_id, "assistant", missing_doc_msg, user_id=user_id)
+                        await finalize_execution(status="completed", tool_used="doc_not_found")
+                        continue
 
-                    # Standard completion: stream tokens using chosen model from dropdown
-                    llm = get_llm(model_id=selected_model)
-                    full_response = ""
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK E: LangGraph StateGraph & Risk-based HITL (Requirements 1 & 2)
+                # -------------------------------------------------------------
+                state = {
+                    "messages": [HumanMessage(content=user_text)],
+                    "task_id": task_id,
+                    "user_query": user_text,
+                    "model_id": selected_model,
+                    "requires_approval": False,
+                    "approval_prompt": None,
+                    "approval_status": None,
+                    "action_type": None,
+                    "stream_handled": True,
+                }
+
+                graph.invoke(state, config=thread_config)
+                snapshot = graph.get_state(thread_config)
+
+                # Check if paused on HITL approval
+                if snapshot.tasks and len(snapshot.tasks) > 0 and snapshot.tasks[0].interrupts:
+                    interrupt_val = snapshot.tasks[0].interrupts[0].value
+                    prompt = interrupt_val.get("prompt", "Approval required")
+                    tool_n = interrupt_val.get("tool_name", "action")
+                    target_val = interrupt_val.get("target", "system")
+                    payload_val = interrupt_val.get("payload", {})
+
+                    await manager.send_json(
+                        websocket,
+                        {
+                            "type": "interrupt",
+                            "status": "awaiting_approval",
+                            "prompt": prompt,
+                            "tool_name": tool_n,
+                            "target": target_val,
+                            "payload": payload_val,
+                            "task_id": task_id,
+                        },
+                    )
+                    await finalize_execution(status="awaiting_approval", tool_used=tool_n)
+                    continue
+
+                # -------------------------------------------------------------
+                # DETERMINISTIC CHECK F: Live Web Search or General Inquiry (Requirements 2)
+                # -------------------------------------------------------------
+                lowered_text = user_text.lower().strip()
+                is_web_search = False
+                search_query = ""
+
+                explicit_prefixes = [
+                    "search the live web for:", "search the live web for", "search the live web:", "search the live web",
+                    "search the web for:", "search the web for", "search the web:", "search the web",
+                    "search live web:", "search live web", "search web for:", "search web for", "search web:", "search web",
+                    "web search:", "web search for:", "web search",
+                ]
+                for pfx in explicit_prefixes:
+                    if lowered_text.startswith(pfx):
+                        is_web_search = True
+                        search_query = user_text[len(pfx):].strip(" :")
+                        break
+
+                if not is_web_search:
+                    search_verbs = ["search", "serch", "lookup", "look up", "browse", "google", "find online", "fetch online"]
+                    has_search_verb = any(v in lowered_text for v in search_verbs)
+                    live_keywords = [
+                        "latest", "recent", "current", "today", "breaking",
+                        "real-time", "realtime", "headlines", "weather", "stock price", "scores"
+                    ]
+                    has_live_keyword = any(k in lowered_text for k in live_keywords)
+
+                    if has_search_verb:
+                        match = re.search(
+                            r"(?:please\s+)?(?:search|serch)\s+(?:the\s+)?(?:live\s+)?(?:web|internet|online)?\s*(?:for\s+)?(.+)",
+                            user_text,
+                            re.IGNORECASE,
+                        )
+                        if match and match.group(1).strip():
+                            is_web_search = True
+                            search_query = match.group(1).strip(" :")
+                    elif has_live_keyword and any(term in lowered_text for term in ["news", "weather", "today", "latest", "breaking", "update", "updates"]):
+                        cleaned = re.sub(r"^(?:can\s+you\s+)?(?:please\s+)?(?:give|tell|show|fetch|get|find)\s+(?:me\s+)?", "", user_text, flags=re.IGNORECASE).strip(" :")
+                        is_web_search = True
+                        search_query = cleaned or user_text
+
+                tool_executed_name = "general_inference"
+
+                if is_web_search:
+                    effective_query = search_query if search_query else user_text
+                    tool_executed_name = "web_search"
+                    await manager.send_json(
+                        websocket,
+                        {
+                            "type": "status",
+                            "status": "processing",
+                            "content": f"Searching live web for: '{effective_query[:40]}'...",
+                            "task_id": task_id,
+                        },
+                    )
+
                     try:
-                        async for chunk in llm.astream(messages_to_llm):
+                        search_results = await asyncio.to_thread(web_search.invoke, effective_query)
+                    except Exception as search_err:
+                        logger.error(f"Error during live web search: {search_err}")
+                        search_results = f"Search temporarily unavailable: {search_err}"
+
+                    await manager.send_json(
+                        websocket,
+                        {
+                            "type": "status",
+                            "status": "processing",
+                            "content": "Synthesizing live web insights...",
+                            "task_id": task_id,
+                        },
+                    )
+
+                    messages_to_llm = (
+                        [SystemMessage(content=system_instruction)]
+                        + conversation_history
+                        + [
+                            HumanMessage(
+                                content=(
+                                    f"Live Web Search Results for query '{effective_query}':\n"
+                                    f"{search_results}\n\n"
+                                    f"Original User Request:\n{user_text}\n\n"
+                                    "Synthesize these live search findings and present a comprehensive answer. "
+                                    "Include clickable markdown links with sources in format `[Source Title](URL)`."
+                                )
+                            )
+                        ]
+                    )
+
+                else:
+                    # General inquiry or standard conversational turn
+                    context_chunks = []
+                    is_followup = bool(conversation_history) and len(user_text.split()) <= 6
+                    if not is_followup:
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                chunks = await similarity_search(user_text, db=db, limit=2)
+                                context_chunks = [c.content for c in chunks]
+                        except Exception as rag_err:
+                            logger.debug(f"Similarity search note: {rag_err}")
+
+                    augmented_prompt = user_text
+                    if context_chunks:
+                        rag_text = "\n".join(context_chunks)
+                        augmented_prompt = f"Context from indexed knowledge base:\n{rag_text}\n\nUser Question:\n{user_text}"
+                        tool_executed_name = "pgvector_rag"
+
+                    messages_to_llm = (
+                        [SystemMessage(content=system_instruction)]
+                        + conversation_history
+                        + [HumanMessage(content=augmented_prompt)]
+                    )
+
+                # Standard completion: stream tokens using chosen model
+                llm = get_llm(model_id=selected_model)
+                full_response = ""
+                try:
+                    async for chunk in llm.astream(messages_to_llm):
+                        token_text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                        if token_text:
+                            full_response += token_text
+                            await manager.send_json(
+                                websocket,
+                                {
+                                    "type": "token",
+                                    "content": token_text,
+                                    "task_id": task_id,
+                                },
+                            )
+                except Exception as stream_err:
+                    logger.warning(f"Streaming error with model '{selected_model}': {stream_err}. Suggesting fallback.")
+                    fallback_id = "gemini-2.5-flash-lite" if selected_model == "openai/gpt-oss-20b" else "openai/gpt-oss-20b"
+                    fallback_name = "Google Gemini 2.5 Flash Lite" if fallback_id == "gemini-2.5-flash-lite" else "Groq: GPT-OSS 20B"
+
+                    await manager.send_json(
+                        websocket,
+                        {
+                            "type": "model_fallback",
+                            "failed_model": selected_model or "default",
+                            "suggested_model": fallback_id,
+                            "suggested_name": fallback_name,
+                            "message": f"Model error encountered. Switched to suggested model: {fallback_name}.",
+                            "task_id": task_id,
+                        },
+                    )
+
+                    try:
+                        fallback_llm = get_llm(model_id=fallback_id)
+                        async for chunk in fallback_llm.astream(messages_to_llm):
                             token_text = chunk.content if hasattr(chunk, "content") else str(chunk)
                             if token_text:
                                 full_response += token_text
                                 await manager.send_json(
                                     websocket,
-                                    {
-                                        "type": "token",
-                                        "content": token_text,
-                                        "task_id": task_id,
-                                    },
+                                    {"type": "token", "content": token_text, "task_id": task_id},
                                 )
-                    except Exception as stream_err:
-                        logger.warning(
-                            f"Streaming error with model '{selected_model}': {stream_err}. Suggesting alternative model."
-                        )
-                        # Determine alternative model from available models
-                        if selected_model == "openai/gpt-oss-20b":
-                            fallback_id = "gemini-2.5-flash-lite"
-                            fallback_name = "Google Gemini 2.5 Flash Lite"
-                        else:
-                            fallback_id = "openai/gpt-oss-20b"
-                            fallback_name = "Groq: GPT-OSS 20B (Ultra Fast)"
+                    except Exception as fb_err:
+                        logger.error(f"Fallback model execution error: {fb_err}")
+                        if not full_response:
+                            full_response = (
+                                "> ⚠️ **Notice**: AI inference is temporarily rate-limited. "
+                                "Please wait a moment and try again."
+                            )
+                            await manager.send_json(
+                                websocket,
+                                {"type": "token", "content": full_response, "task_id": task_id},
+                            )
 
-                        await manager.send_json(
-                            websocket,
-                            {
-                                "type": "model_fallback",
-                                "failed_model": selected_model or "default",
-                                "suggested_model": fallback_id,
-                                "suggested_name": fallback_name,
-                                "message": f"Model '{selected_model or 'Selected'}' encountered an error. Switched to suggested model: {fallback_name}.",
-                                "task_id": task_id,
-                            },
-                        )
+                # Mark completed
+                await manager.send_json(
+                    websocket,
+                    {
+                        "type": "complete",
+                        "status": "completed",
+                        "task_id": task_id,
+                    },
+                )
 
-                        # Continue answering with the suggested fallback model
-                        try:
-                            fallback_llm = get_llm(model_id=fallback_id)
-                            async for chunk in fallback_llm.astream(messages_to_llm):
-                                token_text = chunk.content if hasattr(chunk, "content") else str(chunk)
-                                if token_text:
-                                    full_response += token_text
-                                    await manager.send_json(
-                                        websocket,
-                                        {
-                                            "type": "token",
-                                            "content": token_text,
-                                            "task_id": task_id,
-                                        },
-                                    )
-                        except Exception as fb_err:
-                            logger.error(f"Fallback model execution note: {fb_err}")
-                            if not full_response:
-                                full_response = (
-                                    "> ⚠️ **Notice**: Upstream AI inference is temporarily rate-limited or experiencing high traffic. "
-                                    "Please wait a few moments and try your request again."
-                                )
-                                await manager.send_json(
-                                    websocket,
-                                    {"type": "token", "content": full_response, "task_id": task_id},
-                                )
-
-                    # Mark completed
-                    await manager.send_json(
-                        websocket,
-                        {
-                            "type": "complete",
-                            "status": "completed",
-                            "task_id": task_id,
-                        },
+                # Persist assistant response to DB
+                if full_response:
+                    await save_message_to_db(
+                        conversation_id,
+                        "assistant",
+                        full_response,
+                        user_id=user_id,
                     )
 
-                    # Persist assistant response to DB
-                    if full_response:
-                        await save_message_to_db(
-                            conversation_id,
-                            "assistant",
-                            full_response,
-                            user_id=user_id,
-                        )
+                # Finalize execution in DB (Requirement 7)
+                await finalize_execution(status="completed", tool_used=tool_executed_name)
 
     except WebSocketDisconnect:
         manager.disconnect(conversation_id)
