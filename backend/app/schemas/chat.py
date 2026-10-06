@@ -16,7 +16,7 @@ class ConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    user_id: UUID
+    user_id: str
     title: str
     has_pdf: Optional[bool] = False
     pdf_name: Optional[str] = None

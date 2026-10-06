@@ -1,72 +1,53 @@
-import uuid
-from typing import AsyncGenerator, Optional
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import decode_access_token
+from app.core.config import get_settings
+from app.core.security import decode_access_token, verify_clerk_token
 from app.db.session import get_db
-from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+settings = get_settings()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Validates JWT bearer token and retrieves authenticated User."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> str:
+    """Reads Bearer token, verifies Clerk JWT using JWKS URL, and returns Clerk user ID ('sub').
+    Returns 401 on any failure.
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if settings.CLERK_JWKS_URL:
+        return verify_clerk_token(token)
 
     payload = decode_access_token(token)
-    if payload is None:
-        raise credentials_exception
-
-    user_identifier: str = payload.get("sub")
-    if not user_identifier:
-        raise credentials_exception
-
-    # Match by UUID or email
-    try:
-        user_uuid = uuid.UUID(user_identifier)
-        stmt = select(User).where(User.id == user_uuid)
-    except ValueError:
-        stmt = select(User).where(User.email == user_identifier)
-
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise credentials_exception
-
-    return user
-
-
-oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return str(payload.get("sub"))
 
 
 async def get_current_user_optional(
-    token: Optional[str] = Depends(oauth2_scheme_optional),
-    db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
-    """Retrieves authenticated user if valid token exists, otherwise returns None without erroring."""
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> Optional[str]:
+    """Retrieves Clerk user id if a valid token exists, otherwise returns None."""
     if not token:
         return None
     try:
+        if settings.CLERK_JWKS_URL:
+            return verify_clerk_token(token)
         payload = decode_access_token(token)
-        if not payload or not payload.get("sub"):
-            return None
-        user_identifier: str = payload.get("sub")
-        try:
-            user_uuid = uuid.UUID(user_identifier)
-            stmt = select(User).where(User.id == user_uuid)
-        except ValueError:
-            stmt = select(User).where(User.email == user_identifier)
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        if payload and payload.get("sub"):
+            return str(payload.get("sub"))
+        return None
     except Exception:
         return None

@@ -24,11 +24,11 @@ router = APIRouter()
 @router.get("", response_model=List[ConversationOut])
 async def list_conversations(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ):
     stmt = (
         select(Conversation)
-        .where(Conversation.user_id == current_user.id)
+        .where(Conversation.user_id == current_user)
         .order_by(Conversation.created_at.desc())
     )
     result = await db.execute(stmt)
@@ -39,11 +39,11 @@ async def list_conversations(
 async def create_conversation(
     payload: ConversationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ):
     conv = Conversation(
         title=payload.title or "New Conversation",
-        user_id=current_user.id,
+        user_id=current_user,
     )
     db.add(conv)
     await db.commit()
@@ -63,12 +63,12 @@ async def rename_conversation(
     conversation_id: str,
     payload: ConversationUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ):
     conv_uuid = parse_uuid(conversation_id)
     stmt = select(Conversation).where(
         Conversation.id == conv_uuid,
-        Conversation.user_id == current_user.id,
+        Conversation.user_id == current_user,
     )
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()
@@ -76,7 +76,7 @@ async def rename_conversation(
         # If not in DB yet, create it with this ID
         conv = Conversation(
             id=conv_uuid,
-            user_id=current_user.id,
+            user_id=current_user,
             title=payload.title.strip() or "New Conversation",
         )
         db.add(conv)
@@ -94,12 +94,12 @@ async def rename_conversation(
 async def delete_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ):
     conv_uuid = parse_uuid(conversation_id)
     stmt = select(Conversation).where(
         Conversation.id == conv_uuid,
-        Conversation.user_id == current_user.id,
+        Conversation.user_id == current_user,
     )
     result = await db.execute(stmt)
     conv = result.scalar_one_or_none()
@@ -115,8 +115,19 @@ async def delete_conversation(
 async def get_conversation_messages(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     conv_uuid = parse_uuid(conversation_id)
+    # Verify conversation ownership
+    conv_stmt = select(Conversation).where(
+        Conversation.id == conv_uuid,
+        Conversation.user_id == current_user,
+    )
+    conv_res = await db.execute(conv_stmt)
+    conv = conv_res.scalar_one_or_none()
+    if not conv:
+        return []
+
     stmt = (
         select(Message)
         .where(Message.conversation_id == conv_uuid)

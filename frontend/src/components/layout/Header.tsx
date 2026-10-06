@@ -11,7 +11,6 @@ import {
 import type { AgentTask, UserProfile, ModelOption } from "../../types";
 import { CategoryIcon } from "../common/CategoryIcon";
 import { getCategoryTheme } from "../../utils/theme";
-import { AmbientLogo } from "../common/AmbientLogo";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -68,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <div className="flex items-center gap-2.5">
-          <AmbientLogo className="w-6 h-6 shrink-0 shadow-sm" />
+          <img src="/logo.png" alt="AmbientAI Logo" className="w-6 h-6 shrink-0 object-contain shadow-sm" />
           <div>
             <span className="font-semibold text-xs tracking-tight text-white flex items-center gap-1.5">
               AmbientDesk <span className="hidden sm:inline-block text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">Agent Studio</span>

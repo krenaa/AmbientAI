@@ -24,9 +24,38 @@ export const apiClient = axios.create({
   },
 });
 
+let authTokenGetter: (() => Promise<string | null>) | null = null;
+
+export const setAuthTokenGetter = (getter: () => Promise<string | null>) => {
+  authTokenGetter = getter;
+};
+
+export const getAuthToken = async (): Promise<string | null> => {
+  if (authTokenGetter) {
+    try {
+      const token = await authTokenGetter();
+      if (token) return token;
+    } catch (e) {
+      console.warn("Failed to retrieve Clerk token in api.ts:", e);
+    }
+  }
+  return localStorage.getItem("ambient_token") || sessionStorage.getItem("ambient_token");
+};
+
+
 // Attach Bearer token to all outgoing requests
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("ambient_token") || sessionStorage.getItem("ambient_token");
+apiClient.interceptors.request.use(async (config) => {
+  let token: string | null = null;
+  if (authTokenGetter) {
+    try {
+      token = await authTokenGetter();
+    } catch (e) {
+      console.warn("Failed to retrieve Clerk token in api.ts:", e);
+    }
+  }
+  if (!token) {
+    token = localStorage.getItem("ambient_token") || sessionStorage.getItem("ambient_token");
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

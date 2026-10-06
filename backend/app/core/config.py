@@ -45,11 +45,17 @@ class Settings(BaseSettings):
     GOOGLE_MODEL: str = "gemini-2.5-flash-lite"
     TAVILY_API_KEY: Optional[str] = None
 
+    # Clerk Authentication
+    CLERK_JWKS_URL: Optional[str] = None
+    CLERK_SECRET_KEY: Optional[str] = None
+
     # CORS
     ALLOWED_ORIGINS: Union[str, List[str]] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
+        "http://localhost:8000",
+        "https://ambient-ai-steel.vercel.app",
     ]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
@@ -96,3 +102,6 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+
+settings = get_settings()

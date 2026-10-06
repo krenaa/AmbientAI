@@ -50,7 +50,7 @@ async def upload_knowledge_document(
                 detail="Uploaded file is empty.",
             )
 
-        user_id = str(user.id) if user else "public"
+        user_id = str(user) if user else "public"
         result = await ingest_pdf(filename=filename, file_bytes=content, user_id=user_id)
 
         # Mark the conversation as having an embedded PDF

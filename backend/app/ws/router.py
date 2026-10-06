@@ -12,15 +12,16 @@ from sqlalchemy import select
 from app.agent.graph import create_agent_graph, memory_saver
 from app.agent.llm import get_llm
 from app.agent.tools import calculate_expression, web_search
-from app.core.security import decode_access_token
+from app.core.config import get_settings
+from app.core.security import decode_access_token, verify_clerk_token
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation, Message
 from app.models.task import Task
-from app.models.user import User
 from app.retrieval.service import similarity_search
 
 logger = logging.getLogger("ambientai.ws")
 router = APIRouter()
+settings = get_settings()
 
 
 class ConnectionManager:
@@ -48,7 +49,7 @@ async def save_message_to_db(
     conversation_id_str: str,
     role: str,
     content: str,
-    token_str: Optional[str] = None,
+    user_id: Optional[str] = None,
     default_title: Optional[str] = None,
 ):
     """Safely ensures the conversation exists and persists a message to the database."""
@@ -60,36 +61,22 @@ async def save_message_to_db(
 
         async with AsyncSessionLocal() as db:
             conv = await db.get(Conversation, conv_uuid)
-            if not conv:
-                user_id = None
-                if token_str:
-                    payload = decode_access_token(token_str)
-                    if payload and payload.get("sub"):
-                        try:
-                            user_id = uuid.UUID(str(payload["sub"]))
-                        except Exception:
-                            pass
-                if not user_id:
-                    user_stmt = select(User.id).limit(1)
-                    user_res = await db.execute(user_stmt)
-                    user_id = user_res.scalar_one_or_none()
+            clean_title = (default_title or content[:40] or "New Chat").strip()
+            effective_user_id = user_id or "anonymous"
 
-                clean_title = (default_title or content[:40] or "New Chat").strip()
-                if user_id:
-                    conv = Conversation(
-                        id=conv_uuid,
-                        user_id=user_id,
-                        title=clean_title[:80],
-                    )
-                    db.add(conv)
-                    await db.commit()
-                    logger.info(f"Auto-created conversation {conv_uuid} titled '{conv.title}'")
+            if not conv:
+                conv = Conversation(
+                    id=conv_uuid,
+                    user_id=effective_user_id,
+                    title=clean_title[:80],
+                )
+                db.add(conv)
+                await db.commit()
+                logger.info(f"Auto-created conversation {conv_uuid} for user '{effective_user_id}' titled '{conv.title}'")
             elif role == "user" and (
                 conv.title in ["New Conversation", "General Workspace", "New Chat", "Untitled Conversation"]
                 or conv.title.startswith("Chat ")
             ):
-                # Update placeholder title to the prompt reference
-                clean_title = (default_title or content[:40] or conv.title).strip()
                 conv.title = clean_title[:80]
                 await db.commit()
                 logger.info(f"Updated conversation {conv_uuid} title to '{conv.title}'")
@@ -108,9 +95,10 @@ async def save_message_to_db(
 
 async def get_conversation_history(
     conversation_id_str: str,
+    user_id: Optional[str] = None,
     limit: int = 10,
 ) -> list:
-    """Retrieves recent conversation messages (excluding the in-flight message) to provide multi-turn context."""
+    """Retrieves recent conversation messages to provide multi-turn context scoped by user."""
     try:
         try:
             conv_uuid = uuid.UUID(conversation_id_str)
@@ -118,6 +106,12 @@ async def get_conversation_history(
             conv_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, conversation_id_str)
 
         async with AsyncSessionLocal() as db:
+            if user_id:
+                conv = await db.get(Conversation, conv_uuid)
+                if conv and conv.user_id != user_id:
+                    logger.warning(f"User {user_id} unauthorized to access history of conversation {conv_uuid}")
+                    return []
+
             stmt = (
                 select(Message)
                 .where(Message.conversation_id == conv_uuid)
@@ -144,10 +138,29 @@ async def get_conversation_history(
 
 @router.websocket("/ws/chat/{conversation_id}")
 async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
-    await manager.connect(conversation_id, websocket)
     token = websocket.query_params.get("token")
+    user_id: Optional[str] = None
+
+    if token:
+        try:
+            if settings.CLERK_JWKS_URL:
+                user_id = verify_clerk_token(token)
+            else:
+                payload = decode_access_token(token)
+                if payload and payload.get("sub"):
+                    user_id = str(payload["sub"])
+        except Exception as auth_err:
+            logger.warning(f"WebSocket auth failed: {auth_err}")
+            user_id = None
+
+    if not user_id:
+        logger.warning(f"Closing unauthorized WebSocket for conversation: {conversation_id}")
+        await websocket.close(code=4401, reason="Unauthorized: Invalid or missing Clerk session token")
+        return
+
+    await manager.connect(conversation_id, websocket)
     graph = create_agent_graph(checkpointer=memory_saver)
-    thread_config = {"configurable": {"thread_id": conversation_id}}
+    thread_config = {"configurable": {"thread_id": f"{user_id}:{conversation_id}"}}
 
     try:
         while True:
@@ -221,7 +234,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     conversation_id,
                     "assistant",
                     output_msg,
-                    token_str=token,
+                    user_id=user_id,
                 )
 
             # 3. Stop / Abort Request
@@ -268,12 +281,12 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     conversation_id,
                     "user",
                     user_text,
-                    token_str=token,
+                    user_id=user_id,
                     default_title=user_text[:30],
                 )
 
                 # Retrieve multi-turn conversation memory (prior turns)
-                conversation_history = await get_conversation_history(conversation_id, limit=10)
+                conversation_history = await get_conversation_history(conversation_id, user_id=user_id, limit=10)
 
                 lowered_text = user_text.lower().strip()
                 is_explicit_rag = any(
@@ -586,7 +599,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                             conversation_id,
                             "assistant",
                             full_response,
-                            token_str=token,
+                            user_id=user_id,
                         )
 
     except WebSocketDisconnect:

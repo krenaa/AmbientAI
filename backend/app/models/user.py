@@ -19,9 +19,3 @@ class User(Base):
         nullable=False,
     )
 
-    conversations = relationship(
-        "Conversation",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        order_by="desc(Conversation.created_at)",
-    )

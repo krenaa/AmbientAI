@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Toaster, toast } from "react-hot-toast";
 import {
-  LogIn,
-  UserPlus,
   LogOut,
   MessageSquare,
   FileText,
@@ -11,170 +9,29 @@ import {
   Trash2,
   Check,
   X,
+  Loader2,
 } from "lucide-react";
-import { useAuth, AuthProvider } from "./context/AuthContext";
+import {
+  SignedIn,
+  SignedOut,
+  useAuth,
+  useUser,
+  useClerk,
+  AuthenticateWithRedirectCallback,
+} from "@clerk/clerk-react";
 import { ToastProvider } from "./Toast";
 import {
-  registerUser,
-  loginUser,
   getConversations,
   updateConversation,
   deleteConversation,
+  setAuthTokenGetter,
 } from "./services/api";
+import { setAuthTokenGetter as setApiAuthTokenGetter } from "./api";
 import { prefetchConversationMessages } from "./hooks/useWebSocket";
 import { ChatWindow } from "./components/ChatWindow";
 import { ProfileModal } from "./components/modals/ProfileModal";
-import { validateFullName, getDeterministicAvatar } from "./utils/avatar";
-
-const AuthView: React.FC = () => {
-  const { login } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password || (isRegister && !fullName.trim())) {
-      toast.error(
-        isRegister && !fullName.trim()
-          ? "Please enter your full name"
-          : "Please enter email and password"
-      );
-      return;
-    }
-    if (isRegister) {
-      const validation = validateFullName(fullName);
-      if (!validation.isValid) {
-        toast.error(validation.error || "Please enter your real full name.");
-        return;
-      }
-    }
-
-    setLoading(true);
-    try {
-      if (isRegister) {
-        const validation = validateFullName(fullName);
-        const nameToSave = validation.formattedName || fullName.trim();
-        const res = await registerUser(email, password, nameToSave);
-        login(res.access_token, res.user);
-        toast.success("Account created and logged in!");
-      } else {
-        const res = await loginUser(email, password);
-        login(res.access_token, res.user);
-        toast.success("Logged in successfully!");
-      }
-    } catch (err: any) {
-      const detail =
-        err.response?.data?.detail || "Authentication failed. Please check credentials.";
-      toast.error(detail);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen items-center justify-center p-4 ambient-gradient">
-      <div className="w-full max-w-md rounded-2xl glass-panel p-8 shadow-2xl border border-white/10">
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-16 h-16 mb-3 flex items-center justify-center drop-shadow-sm">
-            <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#1C120C]">AmbientAI</h1>
-          <p className="text-sm text-zinc-600 mt-1">
-            {isRegister ? "Create a new account" : "Sign in to access your agentic workspace"}
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegister && (
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. John Doe"
-                required
-                className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="developer@ambientai.com"
-              autoComplete={isRegister ? "off" : "username"}
-              required
-              className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-1.5">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete={isRegister ? "new-password" : "current-password"}
-              required
-              className="w-full px-4 py-2.5 rounded-xl bg-white/90 border border-zinc-700/40 text-[#1C120C] placeholder-zinc-500 focus:outline-none focus:border-[#183E6C] transition-colors"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold shadow-md hover:shadow-cyan-500/20 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {loading ? (
-              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : isRegister ? (
-              <>
-                <UserPlus className="w-4 h-4 text-white" />
-                <span className="text-white font-semibold">Register</span>
-              </>
-            ) : (
-              <>
-                <LogIn className="w-4 h-4 text-white" />
-                <span className="text-white font-semibold">Sign In</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setEmail("");
-              setPassword("");
-              setFullName("");
-            }}
-            className="text-sm text-cyan-400 hover:text-cyan-300 font-medium transition-colors cursor-pointer"
-          >
-            {isRegister
-              ? "Already have an account? Sign in"
-              : "Don't have an account? Create one"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+import { getDeterministicAvatar } from "./utils/avatar";
+import { AuthScreen } from "./components/auth/AuthScreen";
 
 interface ConversationItem {
   id: string;
@@ -183,8 +40,12 @@ interface ConversationItem {
   pdf_name?: string;
 }
 
-const MainDashboard: React.FC = () => {
-  const { user, logout, updateUser } = useAuth();
+interface MainDashboardProps {
+  clerkUser: any;
+  onSignOut: () => void;
+}
+
+const MainDashboard: React.FC<MainDashboardProps> = ({ clerkUser, onSignOut }) => {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>(() => crypto.randomUUID());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -215,7 +76,7 @@ const MainDashboard: React.FC = () => {
           if (list && list.length > 0) {
             setConversations(list);
             setActiveConvId((prev) => (list.some((c) => c.id === prev) ? prev : list[0].id));
-            // Proactively warm cache for all user conversations for 0ms instant loading
+            // Proactively warm cache for all user conversations for instant loading
             list.forEach((c) => {
               prefetchConversationMessages(c.id);
             });
@@ -282,7 +143,7 @@ const MainDashboard: React.FC = () => {
         prev.map((c) => (c.id === id ? { ...c, title: cleanTitle } : c))
       );
       toast.success("Chat renamed!");
-    } catch (err) {
+    } catch {
       // Local fallback update
       setConversations((prev) =>
         prev.map((c) => (c.id === id ? { ...c, title: cleanTitle } : c))
@@ -327,7 +188,7 @@ const MainDashboard: React.FC = () => {
         />
       )}
 
-      {/* Sidebar with previous version Agent Studio aesthetic */}
+      {/* Sidebar with AmbientDesk Studio aesthetic */}
       <aside
         className={`fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 border-r border-zinc-800/80 bg-zinc-900/95 md:bg-zinc-900/50 flex flex-col shrink-0 transform transition-transform duration-200 ease-in-out ${
           isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
@@ -337,7 +198,7 @@ const MainDashboard: React.FC = () => {
         <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-              <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain" />
+              <img src="/logo.png" alt="AmbientAI Logo" className="w-full h-full object-contain drop-shadow-sm" />
             </div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-sm tracking-tight text-[#1C120C]">AmbientAI</span>
@@ -445,7 +306,7 @@ const MainDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* Title Container - fixed right padding so text never shifts width on hover */}
+                {/* Title Container */}
                 <div className="flex-1 min-w-0 pr-12 flex items-center gap-1.5 overflow-hidden">
                   <span className="truncate block leading-tight">{conv.title}</span>
                   {conv.has_pdf && (
@@ -455,7 +316,7 @@ const MainDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* Action Buttons - Absolute positioned with fade transition, zero width reflow */}
+                {/* Action Buttons */}
                 <div
                   className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity duration-150 ${
                     isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
@@ -481,38 +342,61 @@ const MainDashboard: React.FC = () => {
           })}
         </div>
 
-        {/* User Footer - Clickable to open Profile & Account Edit Modal */}
+        {/* User Footer with Clerk Google identity */}
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/60">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setShowProfileModal(true)}
-              className="flex-1 flex items-center gap-2.5 truncate pr-2 text-left group hover:opacity-80 transition-opacity cursor-pointer"
-              title="Click to view & edit your profile"
+              className="flex-1 flex items-center gap-2.5 truncate pr-2 text-left group hover:opacity-85 transition-opacity cursor-pointer"
+              title="Click to view your profile"
             >
-              <div
-                style={{
-                  backgroundColor: getDeterministicAvatar(user?.full_name, user?.email).bg,
-                  borderColor: getDeterministicAvatar(user?.full_name, user?.email).border,
-                  color: getDeterministicAvatar(user?.full_name, user?.email).text,
-                }}
-                className="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs"
-              >
-                {getDeterministicAvatar(user?.full_name, user?.email).initials}
-              </div>
+              {clerkUser?.imageUrl ? (
+                <img
+                  src={clerkUser.imageUrl}
+                  alt={clerkUser.fullName || "User Avatar"}
+                  className="w-7 h-7 rounded-lg object-cover border border-zinc-700/80 shadow-xs shrink-0"
+                />
+              ) : (
+                <div
+                  style={{
+                    backgroundColor: getDeterministicAvatar(
+                      clerkUser?.fullName,
+                      clerkUser?.primaryEmailAddress?.emailAddress
+                    ).bg,
+                    borderColor: getDeterministicAvatar(
+                      clerkUser?.fullName,
+                      clerkUser?.primaryEmailAddress?.emailAddress
+                    ).border,
+                    color: getDeterministicAvatar(
+                      clerkUser?.fullName,
+                      clerkUser?.primaryEmailAddress?.emailAddress
+                    ).text,
+                  }}
+                  className="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs"
+                >
+                  {
+                    getDeterministicAvatar(
+                      clerkUser?.fullName,
+                      clerkUser?.primaryEmailAddress?.emailAddress
+                    ).initials
+                  }
+                </div>
+              )}
               <div className="flex flex-col truncate min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-zinc-200 font-semibold truncate group-hover:text-cyan-400 transition-colors">
-                    {user?.full_name || user?.email}
+                    {clerkUser?.fullName ||
+                      clerkUser?.primaryEmailAddress?.emailAddress ||
+                      "Google User"}
                   </span>
-                  <Pencil className="w-2.5 h-2.5 text-zinc-400 opacity-60 group-hover:opacity-100 group-hover:text-cyan-400 transition-all shrink-0" />
                 </div>
                 <span className="text-[10px] text-zinc-400 truncate">
-                  {user?.full_name ? user.email : "Core v1.0.0 • Click to edit"}
+                  {clerkUser?.primaryEmailAddress?.emailAddress || "Google SSO"}
                 </span>
               </div>
             </button>
             <button
-              onClick={logout}
+              onClick={onSignOut}
               className="p-1.5 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-zinc-400 transition-colors cursor-pointer shrink-0"
               title="Sign Out"
             >
@@ -536,18 +420,22 @@ const MainDashboard: React.FC = () => {
         />
       </main>
 
-      {/* Profile & Account Edit Modal Popup */}
+      {/* Profile & Account Details Modal */}
       {showProfileModal && (
         <ProfileModal
           isOpen={showProfileModal}
           onClose={() => setShowProfileModal(false)}
-          user={user as any}
-          onLogout={logout}
-          onProfileUpdated={(updated) => {
-            if (updateUser) {
-              updateUser(updated as any);
-            }
-          }}
+          user={
+            {
+              id: clerkUser?.id || "user",
+              email: clerkUser?.primaryEmailAddress?.emailAddress || "",
+              full_name: clerkUser?.fullName || "",
+              created_at: clerkUser?.createdAt
+                ? new Date(clerkUser.createdAt).toISOString()
+                : new Date().toISOString(),
+            } as any
+          }
+          onLogout={onSignOut}
         />
       )}
     </div>
@@ -555,7 +443,64 @@ const MainDashboard: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
+
+  // Attach dynamic Clerk token to API clients whenever signed in
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      const tokenGetter = async () => {
+        try {
+          return await getToken();
+        } catch (err) {
+          console.warn("Failed to retrieve Clerk session token:", err);
+          return null;
+        }
+      };
+      setAuthTokenGetter(tokenGetter);
+      setApiAuthTokenGetter(tokenGetter);
+    }
+  }, [isLoaded, isSignedIn, getToken]);
+
+  // Handle SSO Callback Route
+  const isSsoCallback =
+    typeof window !== "undefined" && window.location.pathname === "/sso-callback";
+
+  if (isSsoCallback) {
+    return (
+      <div className="flex min-h-screen w-screen ambient-gradient items-center justify-center p-4 text-zinc-100">
+        <div className="rounded-2xl bg-zinc-950/90 backdrop-blur-xl border border-zinc-800/80 p-8 text-center space-y-4 shadow-2xl max-w-sm w-full">
+          <img src="/logo.png" alt="AmbientAI Logo" className="w-14 h-14 mx-auto object-contain drop-shadow-md" />
+          <div className="flex items-center justify-center gap-2 text-xs font-mono text-zinc-300">
+            <Loader2 className="w-4 h-4 animate-spin text-cyan-500" />
+            <span>Completing Google Sign-In...</span>
+          </div>
+          <AuthenticateWithRedirectCallback
+            signUpForceRedirectUrl="/"
+            signInForceRedirectUrl="/"
+            continueSignUpUrl="/"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // App Initializing State
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen w-screen ambient-gradient items-center justify-center p-4 text-zinc-100">
+        <div className="flex flex-col items-center gap-3">
+          <img src="/logo.png" alt="AmbientAI Logo" className="w-16 h-16 object-contain animate-pulse drop-shadow-md" />
+          <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" />
+            <span>Initializing AmbientDesk Studio...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Toaster
@@ -569,7 +514,8 @@ const AppContent: React.FC = () => {
             border: "1px solid rgba(255, 255, 255, 0.12)",
             backdropFilter: "blur(18px)",
             WebkitBackdropFilter: "blur(18px)",
-            boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 20px 0 rgba(6, 182, 212, 0.15)",
+            boxShadow:
+              "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 20px 0 rgba(6, 182, 212, 0.15)",
             borderRadius: "16px",
             padding: "11px 18px",
             fontSize: "13px",
@@ -581,7 +527,8 @@ const AppContent: React.FC = () => {
             duration: 2500,
             style: {
               border: "1px solid rgba(52, 211, 153, 0.35)",
-              boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(52, 211, 153, 0.18)",
+              boxShadow:
+                "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(52, 211, 153, 0.18)",
             },
             iconTheme: {
               primary: "#34d399",
@@ -592,7 +539,8 @@ const AppContent: React.FC = () => {
             duration: 4000,
             style: {
               border: "1px solid rgba(244, 63, 94, 0.4)",
-              boxShadow: "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(244, 63, 94, 0.18)",
+              boxShadow:
+                "0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(244, 63, 94, 0.18)",
             },
             iconTheme: {
               primary: "#fb7185",
@@ -601,17 +549,23 @@ const AppContent: React.FC = () => {
           },
         }}
       />
-      {isAuthenticated ? <MainDashboard /> : <AuthView />}
+      <SignedOut>
+        <AuthScreen />
+      </SignedOut>
+      <SignedIn>
+        <MainDashboard
+          clerkUser={clerkUser}
+          onSignOut={() => signOut({ redirectUrl: "/" })}
+        />
+      </SignedIn>
     </>
   );
 };
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }

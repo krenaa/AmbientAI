@@ -13,6 +13,7 @@ class DocumentChunk(Base):
     content = Column(Text, nullable=False)
     embedding = Column(Vector(768), nullable=True)
     source = Column(String(255), nullable=False, default="manual")
+    user_id = Column(String(255), nullable=True, index=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

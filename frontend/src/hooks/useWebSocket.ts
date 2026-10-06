@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import type { Message, StreamTokenPayload } from "../types";
-import { API_BASE_URL, getMessages } from "../services/api";
+import { API_BASE_URL, getMessages, getAuthToken } from "../services/api";
 
 export interface HITLApprovalState {
   taskId: string;
@@ -117,12 +117,20 @@ export function useWebSocket(
     };
   }, [conversationId, updateMessages]);
 
-  const connect = useCallback(() => {
-    // Use normalized base URL with auth token query param
-    const token = localStorage.getItem("ambient_token");
+  const connect = useCallback(async () => {
+    if (!conversationId) return;
+
+    // Use normalized base URL with dynamic Clerk auth token query param
+    const token = await getAuthToken();
     const wsBaseUrl = API_BASE_URL.replace(/^http/, "ws");
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
     const wsUrl = `${wsBaseUrl}/ws/chat/${conversationId}${tokenParam}`;
+
+    if (wsRef.current) {
+      try {
+        wsRef.current.close();
+      } catch {}
+    }
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -141,10 +149,17 @@ export function useWebSocket(
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setIsConnected(false);
       setIsProcessing(false);
       setStatusMessage(null);
+
+      // If unauthorized by backend (4401), prompt user instead of loop
+      if (event.code === 4401) {
+        console.warn("WebSocket closed due to 4401 Unauthorized.");
+        return;
+      }
+
       // Reconnect after 3s
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();

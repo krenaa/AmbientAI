@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.retrieval.service import ingest_documents, similarity_search
 from app.schemas.document import (
@@ -23,6 +24,7 @@ router = APIRouter()
 async def ingest(
     payload: DocumentIngestRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     if not payload.content.strip():
         raise HTTPException(
@@ -34,6 +36,7 @@ async def ingest(
         content=payload.content,
         source=payload.source or "manual",
         db=db,
+        user_id=current_user,
     )
     return {
         "success": True,
@@ -50,6 +53,7 @@ async def ingest(
 async def search(
     payload: DocumentSearchRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     if not payload.query.strip():
         return []
@@ -57,6 +61,7 @@ async def search(
     chunks = await similarity_search(
         query=payload.query,
         db=db,
+        user_id=current_user,
         limit=payload.limit or 4,
     )
     return [DocumentChunkOut.model_validate(c) for c in chunks]

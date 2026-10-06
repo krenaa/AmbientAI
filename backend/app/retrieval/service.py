@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,9 +34,10 @@ async def ingest_documents(
     content: str,
     source: str,
     db: AsyncSession,
+    user_id: Optional[str] = None,
     chunk_size: int = 500,
 ) -> int:
-    """Chunks text, computes embeddings, and stores them in pgvector."""
+    """Chunks text, computes embeddings, and stores them in pgvector scoped by user_id."""
     chunks = chunk_text(content, chunk_size=chunk_size)
     if not chunks:
         return 0
@@ -53,31 +54,32 @@ async def ingest_documents(
             content=text_chunk,
             embedding=vector,
             source=source,
+            user_id=user_id,
         )
         db.add(chunk_record)
 
     await db.commit()
-    logger.info(f"Ingested {len(chunks)} document chunks into pgvector.")
+    logger.info(f"Ingested {len(chunks)} document chunks into pgvector for user '{user_id}'.")
     return len(chunks)
 
 
 async def similarity_search(
     query: str,
     db: AsyncSession,
+    user_id: Optional[str] = None,
     limit: int = 4,
 ) -> List[DocumentChunk]:
-    """Finds top-K most similar document chunks using cosine distance."""
+    """Finds top-K most similar document chunks using cosine distance scoped by user_id."""
     if not query.strip():
         return []
 
     embedder = get_embedding_model()
     query_vector = embedder.embed_query(query)
 
-    # Order by pgvector cosine distance
-    stmt = (
-        select(DocumentChunk)
-        .order_by(DocumentChunk.embedding.cosine_distance(query_vector))
-        .limit(limit)
-    )
+    stmt = select(DocumentChunk)
+    if user_id:
+        stmt = stmt.where((DocumentChunk.user_id == user_id) | (DocumentChunk.user_id.is_(None)))
+
+    stmt = stmt.order_by(DocumentChunk.embedding.cosine_distance(query_vector)).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
