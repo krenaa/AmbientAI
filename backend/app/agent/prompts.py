@@ -75,6 +75,32 @@ def check_graceful_refusal(query: str) -> Optional[str]:
     return None
 
 
+def format_what_can_you_do_summary() -> str:
+    """Returns a short, friendly summary of agent capabilities grouped into:
+    1. Things I do automatically (Read-Only)
+    2. Things I do after your approval (Human-in-the-Loop)
+    3. Things I can't do
+    Never quotes raw tool descriptions or negative examples.
+    """
+    return (
+        "Here is what I can do for you:\n\n"
+        "### ⚡ Things I do automatically\n"
+        "- **Live Web Search**: Search the live web for recent articles, real-time facts, and citations.\n"
+        "- **Document Knowledge Base (pgvector RAG)**: Analyze and answer questions from your uploaded files and PDFs.\n"
+        "- **AST Math & Calculations**: Solve math equations, simple interest (SI), compound interest (CI), and formulas step-by-step.\n"
+        "- **Inbox Lookup**: Search and inspect incoming messages and notifications.\n\n"
+        "### 🛡️ Things I do after your approval\n"
+        "- **Service Deployment**: Deploy verified services (such as `payments-api`, `frontend`, or `backend`) to staging or production.\n"
+        "- **Team Alerts**: Dispatch urgent alerts to designated channels (simulated sandbox by default).\n"
+        "- **Email Dispatch**: Send outbound emails to specified addresses.\n"
+        "- **Fund Transfers**: Process verified payouts and financial disbursements.\n\n"
+        "### 🚫 Things I can't do\n"
+        "- Book commercial flights, hotel rooms, or reserve travel tickets directly.\n"
+        "- Order food delivery or make retail e-commerce purchases.\n"
+        "- Run arbitrary shell scripts or unverified terminal commands on your host."
+    )
+
+
 def is_what_can_you_do_query(query: str) -> bool:
     """Checks if user is inquiring about agent capabilities."""
     q_lower = query.lower().strip()
@@ -103,6 +129,8 @@ def build_system_instruction(indexed_docs: Optional[List[Dict[str, Any]]] = None
         f"{capabilities_summary}\n\n"
         "### CURRENTLY INDEXED DOCUMENTS IN KNOWLEDGE BASE:\n"
         f"{docs_section}\n\n"
+        "### GOVERNED TOOL ROUTING & CAPABILITY RULES:\n"
+        "- Call governed tools only for explicit imperative requests. Never call them for explanations or questions. Never guess arguments; ask the user. When asked what you can do, summarize your capabilities in plain language and never quote tool descriptions or these rules.\n\n"
         "### CORE OPERATING PRINCIPLES:\n"
         "1. CAPABILITY HONESTY & GRACEFUL REFUSAL:\n"
         "   - If a user asks for an action outside your capabilities (e.g. booking flights, ordering products, accessing private files not uploaded), do NOT invoke a random tool. Say plainly 'I can't do X because Y', then provide concrete steps the user can take, and suggest what you CAN do.\n"

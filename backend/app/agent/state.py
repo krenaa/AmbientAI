@@ -18,3 +18,5 @@ class AgentState(TypedDict):
     tool_result: Optional[str]
     model_id: Optional[str]
     stream_handled: Optional[bool]
+    clarification_needed: Optional[bool]
+    clarification_message: Optional[str]

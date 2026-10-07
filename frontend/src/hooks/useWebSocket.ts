@@ -240,6 +240,7 @@ export function useWebSocket(
           setStatusMessage(null);
           activeAssistantMessageIdRef.current = null;
           toast.success("Response generated successfully", { id: "task-complete" });
+          window.dispatchEvent(new CustomEvent("ambient_stats_updated"));
         }
 
         // Model Fallback / Error Suggestion

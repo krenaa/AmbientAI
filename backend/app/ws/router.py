@@ -23,6 +23,7 @@ from app.agent.prompts import (
     build_system_instruction,
     check_graceful_refusal,
     is_what_can_you_do_query,
+    format_what_can_you_do_summary,
 )
 from app.agent.registry import registry, ToolRisk
 from app.agent.tools import calculate_expression, web_search
@@ -363,7 +364,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                 # DETERMINISTIC CHECK B: "What Can You Do?" (Requirement 3)
                 # -------------------------------------------------------------
                 if is_what_can_you_do_query(user_text):
-                    cap_msg = registry.format_capabilities_summary()
+                    cap_msg = format_what_can_you_do_summary()
                     await manager.send_json(websocket, {"type": "token", "content": cap_msg, "task_id": task_id})
                     await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
                     await save_message_to_db(conversation_id, "assistant", cap_msg, user_id=user_id)
@@ -484,6 +485,8 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                     "approval_prompt": None,
                     "approval_status": None,
                     "action_type": None,
+                    "clarification_needed": False,
+                    "clarification_message": None,
                     "stream_handled": True,
                 }
 
@@ -511,6 +514,15 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                         },
                     )
                     await finalize_execution(status="awaiting_approval", tool_used=tool_n)
+                    continue
+
+                # Check if a clarifying question was generated (e.g. missing deploy args or missing alert channel)
+                if snapshot.values.get("clarification_needed"):
+                    clarify_text = snapshot.values.get("clarification_message") or "Could you please clarify your request?"
+                    await manager.send_json(websocket, {"type": "token", "content": clarify_text, "task_id": task_id})
+                    await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
+                    await save_message_to_db(conversation_id, "assistant", clarify_text, user_id=user_id)
+                    await finalize_execution(status="completed", tool_used="clarification")
                     continue
 
                 # -------------------------------------------------------------

@@ -59,6 +59,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ clerkUser, onSignOut }) =
       if (list && list.length > 0) {
         setConversations(list);
       }
+      window.dispatchEvent(new CustomEvent("ambient_stats_updated"));
     } catch (e) {
       console.debug("Could not refresh conversations:", e);
     }
@@ -165,6 +166,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ clerkUser, onSignOut }) =
 
     const remaining = conversations.filter((c) => c.id !== id);
     setConversations(remaining);
+    window.dispatchEvent(new CustomEvent("ambient_stats_updated"));
     if (remaining.length > 0) {
       if (activeConvId === id) {
         setActiveConvId(remaining[0].id);

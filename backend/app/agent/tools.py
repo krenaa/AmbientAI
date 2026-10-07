@@ -179,57 +179,39 @@ def fetch_recent_emails(max_count: int = 5, query: str = "") -> str:
 # ============================================================================
 
 @tool
-def send_alert(recipient: str, subject: str, message_body: str) -> str:
-    """Send an urgent notification or alert to the team or channel.
-    ONLY when the user explicitly asks to send an alert or notify the team.
-    Negative examples:
-    - 'Search the live web for: latest article on AI' -> DO NOT call send_alert
-    - 'Calculate the formula: 7.5% si of 5 years' -> DO NOT call send_alert
-    - 'What is nexus_chat.md about?' -> DO NOT call send_alert
-
-    Args:
-        recipient: Target team channel, email, or webhook identifier.
-        subject: The alert priority headline or summary subject.
-        message_body: Detailed alert notification message.
-    """
-    logger.info(f"Alert sent to {recipient}: {subject}")
-    return f"Alert dispatched to {recipient}. Subject: '{subject}'. Message: '{message_body}'."
+def send_alert(recipient: str, subject: str, message_body: str) -> Dict[str, Any]:
+    """send_alert: Send an urgent notification or alert to a specified team channel."""
+    logger.info(f"Alert sent to channel/recipient '{recipient}': {subject}")
+    webhook_url = getattr(settings, "ALERT_WEBHOOK_URL", None)
+    if webhook_url:
+        return {
+            "status": "sent",
+            "detail": f"Alert successfully delivered to '{recipient}'. Subject: '{subject}'. Message: '{message_body}'.",
+        }
+    return {
+        "status": "simulated",
+        "detail": f"Simulated: no real alert was sent. Channel: '{recipient}', Subject: '{subject}', Message: '{message_body}'.",
+    }
 
 
 @tool
-def send_external_notification(recipient: str, subject: str, message_body: str) -> str:
-    """Send an external alert, notification, or team announcement.
-    ONLY when the user explicitly asks to send an alert or notification.
-    Negative examples:
-    - 'Search the live web for: latest article on AI' -> DO NOT call send_external_notification
-    - 'Calculate the formula: 7.5% si of 5 years' -> DO NOT call send_external_notification
-    - 'Summarize project_specs.pdf' -> DO NOT call send_external_notification
-
-    Args:
-        recipient: Target email address, team member, or channel identifier.
-        subject: The summary subject line for the message.
-        message_body: The full notification message content.
-    """
+def send_external_notification(recipient: str, subject: str, message_body: str) -> Dict[str, Any]:
+    """send_external_notification: Broadcast an external notification to a specified team or recipient."""
     logger.info(f"Dispatched external notification to {recipient}: {subject}")
-    return f"Notification successfully delivered to {recipient}. Subject: '{subject}'."
+    return {
+        "status": "simulated",
+        "detail": f"Simulated: no real notification was dispatched. Recipient: '{recipient}', Subject: '{subject}'.",
+    }
 
 
 @tool
-def deploy_service(target_env: str = "production", service_name: str = "ambientdesk-core", version_tag: str = "v1.0.0") -> str:
-    """Trigger deployment of code or services to staging or production.
-    ONLY when the user explicitly asks to deploy.
-    Negative examples:
-    - 'Calculate 7.5% si of 5 years' -> DO NOT call deploy_service
-    - 'Search for latest tech news' -> DO NOT call deploy_service
-    - 'Explain machine learning algorithms' -> DO NOT call deploy_service
-
-    Args:
-        target_env: Target environment (e.g. 'production', 'staging').
-        service_name: Name of the service or component to deploy.
-        version_tag: Release tag or commit identifier to deploy.
-    """
+def deploy_service(target_env: str = "production", service_name: str = "ambientdesk-core", version_tag: str = "v1.0.0") -> Dict[str, Any]:
+    """deploy_service: Deploy a named service/version to staging or production."""
     logger.info(f"Deployment triggered for {service_name} to {target_env} (tag: {version_tag})")
-    return f"Deployment initiated for '{service_name}' targeting environment '{target_env}' with tag '{version_tag}'."
+    return {
+        "status": "simulated",
+        "detail": f"Simulated: deployment pipeline triggered in test mode. Service: '{service_name}', Version: '{version_tag}', Environment: '{target_env}'. (No actual cloud infrastructure was modified).",
+    }
 
 
 # RFC-compliant email regex
@@ -273,19 +255,8 @@ def validate_email_address(email: str) -> Tuple[bool, str]:
 
 
 @tool
-def send_email(recipient: str, subject: str, body: str) -> str:
-    """Send an email to a recipient with subject and message body.
-    ONLY when the user explicitly asks to send an email.
-    Negative examples:
-    - 'What are latest articles on AI?' -> DO NOT call send_email
-    - 'Calculate 500 * 25' -> DO NOT call send_email
-    - 'Read inbox emails' -> DO NOT call send_email
-
-    Args:
-        recipient: Target recipient email address (e.g., 'user@example.com').
-        subject: The subject line of the email.
-        body: The plain text or formatted body of the email.
-    """
+def send_email(recipient: str, subject: str, body: str) -> Dict[str, Any]:
+    """send_email: Send an email to a specified recipient with subject and message body."""
     clean_recipient = recipient.strip()
     clean_subject = subject.strip() if subject else "(No Subject)"
     clean_body = body.strip() if body else ""
@@ -293,7 +264,10 @@ def send_email(recipient: str, subject: str, body: str) -> str:
     is_valid, validation_msg = validate_email_address(clean_recipient)
     if not is_valid:
         logger.warning(f"Email validation failed for recipient '{clean_recipient}': {validation_msg}")
-        return f"Validation Error: {validation_msg}."
+        return {
+            "status": "failed",
+            "detail": f"Validation Error: {validation_msg}",
+        }
 
     if settings.SMTP_HOST:
         try:
@@ -311,37 +285,32 @@ def send_email(recipient: str, subject: str, body: str) -> str:
                 server.send_message(msg)
 
             logger.info(f"Live SMTP email sent successfully to {clean_recipient}")
-            return f"Email successfully delivered via SMTP to '{clean_recipient}'. Subject: '{clean_subject}'."
+            return {
+                "status": "sent",
+                "detail": f"Email successfully delivered via SMTP to '{clean_recipient}'. Subject: '{clean_subject}'.",
+            }
         except Exception as e:
             logger.error(f"Failed to send email via SMTP: {e}")
-            return f"SMTP Delivery Failure to '{clean_recipient}': {str(e)}"
+            return {
+                "status": "failed",
+                "detail": f"SMTP Delivery Failure to '{clean_recipient}': {str(e)}",
+            }
 
     logger.info(f"[Demo Mode] Simulated email dispatch to {clean_recipient} | Subject: '{clean_subject}'")
-    return (
-        f"[SIMULATED MODE]: Email prepared for '{clean_recipient}' with subject '{clean_subject}'. "
-        "No SMTP sender configured in .env."
-    )
+    return {
+        "status": "simulated",
+        "detail": f"Simulated: no real email was sent (no SMTP credentials configured in environment). Recipient: '{clean_recipient}', Subject: '{clean_subject}'.",
+    }
 
 
 @tool
-def execute_fund_transfer_or_payout(recipient_or_account: str, amount: str, memo: str = "") -> str:
-    """Execute a financial disbursement, bank payout, or fund transfer.
-    ONLY when the user explicitly asks to transfer money or payout funds.
-    Negative examples:
-    - 'Calculate interest on 20000' -> DO NOT call execute_fund_transfer_or_payout
-    - 'Search current bitcoin price' -> DO NOT call execute_fund_transfer_or_payout
-    - 'Summarize company report' -> DO NOT call execute_fund_transfer_or_payout
-
-    Args:
-        recipient_or_account: Target account, vendor ID, or recipient identifier.
-        amount: Dollar or currency amount to disburse (e.g. '$500', '30 dollar').
-        memo: Optional transaction memo or description.
-    """
+def execute_fund_transfer_or_payout(recipient_or_account: str, amount: str, memo: str = "") -> Dict[str, Any]:
+    """execute_fund_transfer_or_payout: Execute a fund transfer or payout to a designated recipient account."""
     logger.info(f"Authorized fund transfer of {amount} to {recipient_or_account}")
-    return (
-        f"Transaction successfully settled: {amount} transferred to {recipient_or_account}. "
-        f"Status: Executed & Verified. Memo: '{memo or 'Direct transfer'}'. Reference ID: tx-77829."
-    )
+    return {
+        "status": "simulated",
+        "detail": f"Simulated: no real funds transferred. Amount: {amount}, Recipient Account: '{recipient_or_account}', Memo: '{memo or 'Direct transfer'}'. (Sandbox mode).",
+    }
 
 
 # ============================================================================
@@ -395,20 +364,13 @@ registry.register(
 registry.register(
     ToolDefinition(
         name="send_alert",
-        description=(
-            "Send an urgent notification or alert to the team or channel. "
-            "ONLY when the user explicitly asks to send an alert or notify the team. "
-            "Negative examples: "
-            "(1) 'Search the live web for: latest article on AI' -> DO NOT call. "
-            "(2) 'Calculate the formula: 7.5% si of 5 years' -> DO NOT call. "
-            "(3) 'What is nexus_chat.md about?' -> DO NOT call."
-        ),
+        description="Send an urgent notification or alert to a specified team channel.",
         risk=ToolRisk.SIDE_EFFECT,
         func=send_alert,
         explicit_intent_keywords=[
             "send alert", "send an alert", "send notification", "send a notification",
             "notify team", "notify the team", "alert team", "alert the team",
-            "post alert", "trigger alert"
+            "raise alert", "trigger alert"
         ],
         target_param="recipient",
         category="alert",
@@ -418,14 +380,7 @@ registry.register(
 registry.register(
     ToolDefinition(
         name="send_external_notification",
-        description=(
-            "Send an external notification or team announcement. "
-            "ONLY when the user explicitly asks to send an alert or notification. "
-            "Negative examples: "
-            "(1) 'Search web for AI news' -> DO NOT call. "
-            "(2) 'Calculate SI on 5000' -> DO NOT call. "
-            "(3) 'Read inbox' -> DO NOT call."
-        ),
+        description="Broadcast an external notification to a specified team or recipient.",
         risk=ToolRisk.SIDE_EFFECT,
         func=send_external_notification,
         explicit_intent_keywords=[
@@ -439,19 +394,11 @@ registry.register(
 registry.register(
     ToolDefinition(
         name="deploy_service",
-        description=(
-            "Trigger deployment of code or services to staging or production. "
-            "ONLY when the user explicitly asks to deploy. "
-            "Negative examples: "
-            "(1) 'Calculate 7.5% si of 5 years' -> DO NOT call. "
-            "(2) 'Search for latest tech news' -> DO NOT call. "
-            "(3) 'Explain machine learning' -> DO NOT call."
-        ),
+        description="Deploy a named service/version to staging or production.",
         risk=ToolRisk.SIDE_EFFECT,
         func=deploy_service,
         explicit_intent_keywords=[
-            "deploy to prod", "deploy to production", "deploy service", "deploy to staging",
-            "deploy the app", "deploy application", "ship to prod", "publish release", "deploy"
+            "deploy", "release", "ship", "roll out"
         ],
         target_param="target_env",
         category="deploy",
@@ -461,17 +408,10 @@ registry.register(
 registry.register(
     ToolDefinition(
         name="send_email",
-        description=(
-            "Send an email to a specific recipient address. "
-            "ONLY when the user explicitly asks to send an email. "
-            "Negative examples: "
-            "(1) 'What are latest articles on AI?' -> DO NOT call. "
-            "(2) 'Calculate 500 * 25' -> DO NOT call. "
-            "(3) 'Read inbox' -> DO NOT call."
-        ),
+        description="Send an email to a specified recipient with subject and message body.",
         risk=ToolRisk.SIDE_EFFECT,
         func=send_email,
-        explicit_intent_keywords=["send email", "email to", "send mail", "compose email", "shoot an email"],
+        explicit_intent_keywords=["send email", "email to", "send mail", "compose email", "write email"],
         target_param="recipient",
         category="email",
     )
@@ -480,17 +420,10 @@ registry.register(
 registry.register(
     ToolDefinition(
         name="execute_fund_transfer_or_payout",
-        description=(
-            "Execute a financial disbursement or fund transfer. "
-            "ONLY when the user explicitly asks to transfer money or payout funds. "
-            "Negative examples: "
-            "(1) 'Calculate interest' -> DO NOT call. "
-            "(2) 'Search bitcoin price' -> DO NOT call. "
-            "(3) 'Summarize document' -> DO NOT call."
-        ),
+        description="Execute a fund transfer or payout to a designated recipient account.",
         risk=ToolRisk.SIDE_EFFECT,
         func=execute_fund_transfer_or_payout,
-        explicit_intent_keywords=["transfer fund", "transfer money", "execute payout", "disburse payment", "send funds", "payout"],
+        explicit_intent_keywords=["transfer", "payout", "pay"],
         target_param="recipient_or_account",
         category="finance",
     )

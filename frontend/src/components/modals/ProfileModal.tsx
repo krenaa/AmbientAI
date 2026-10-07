@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   X,
   Shield,
@@ -44,7 +44,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   useEffect(() => {
     if (user) {
-      setActiveUser(user);
+      setActiveUser((prev: any) => ({
+        ...(prev || {}),
+        ...user,
+        stats: prev?.stats || user.stats,
+      }));
     }
   }, [user]);
 
@@ -59,23 +63,42 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   }, [activeUser, isOpen]);
 
+  const refreshStats = useCallback(() => {
+    fetchCurrentUser()
+      .then((updated) => {
+        if (updated) {
+          setActiveUser((prev: any) => ({
+            ...(prev || {}),
+            ...updated,
+            stats: updated.stats || prev?.stats,
+          }));
+          if (onProfileUpdated) {
+            onProfileUpdated(updated);
+          }
+        }
+      })
+      .catch((err) => {
+        console.debug("Failed to fetch fresh user stats:", err);
+      });
+  }, [onProfileUpdated]);
+
   // Fetch real-time live execution statistics whenever the profile modal opens
   useEffect(() => {
     if (isOpen) {
-      fetchCurrentUser()
-        .then((updated) => {
-          if (updated) {
-            setActiveUser(updated);
-            if (onProfileUpdated) {
-              onProfileUpdated(updated);
-            }
-          }
-        })
-        .catch((err) => {
-          console.debug("Failed to fetch fresh user stats:", err);
-        });
+      refreshStats();
     }
-  }, [isOpen]);
+  }, [isOpen, refreshStats]);
+
+  // Refetch when external ambient_stats_updated event is fired (after tool execution or session creation)
+  useEffect(() => {
+    const handleStatsUpdate = () => {
+      refreshStats();
+    };
+    window.addEventListener("ambient_stats_updated", handleStatsUpdate);
+    return () => {
+      window.removeEventListener("ambient_stats_updated", handleStatsUpdate);
+    };
+  }, [refreshStats]);
 
   // Password Reset Form State
   const [currentPassword, setCurrentPassword] = useState("");

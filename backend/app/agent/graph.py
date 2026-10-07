@@ -1,14 +1,14 @@
 import json
 import logging
 import re
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Literal, Tuple, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
 from app.agent.llm import get_llm
-from app.agent.registry import registry, ToolRisk
+from app.agent.registry import registry, ToolRisk, is_question_or_explanation
 from app.agent.state import AgentState
 import app.agent.tools  # noqa: F401 - ensure tools are loaded and registered in ToolRegistry
 
@@ -17,61 +17,150 @@ logger = logging.getLogger("ambientai.agent.graph")
 # Global in-memory checkpointer for development
 memory_saver = MemorySaver()
 
+# Allowlist for deployment services (Bug 2)
+ALLOWED_DEPLOY_SERVICES = [
+    "payments-api",
+    "ambientdesk-core",
+    "frontend",
+    "backend",
+    "medi-lens",
+    "agent-service",
+    "api-gateway",
+]
 
-def parse_alert_details(text: str) -> Dict[str, str]:
-    """Extracts recipient, subject, and message body for an alert request."""
-    # Match patterns like: "send an alert to the team: server down"
-    match = re.search(r"(?:to|for)\s+([^:]+?)(?::\s*|\s+with\s+(?:subject|message)\s+)(.+)", text, re.IGNORECASE)
-    if match:
-        recipient = match.group(1).strip()
-        body = match.group(2).strip()
-        return {
-            "recipient": recipient,
-            "subject": f"Urgent Alert: {body[:50]}",
-            "message_body": body,
-        }
-    return {
-        "recipient": "operations@ambientdesk.ai",
-        "subject": "System Alert Notification",
-        "message_body": text,
+
+def validate_and_parse_deploy(text: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Validates that service_name (in allowlist), version_tag, and target_env appear in the message.
+    If any is missing, returns clarifying prompt instead of hallucinating.
+    """
+    t_lower = text.lower()
+
+    # 1. Service name validation against allowlist
+    found_service = None
+    for s in ALLOWED_DEPLOY_SERVICES:
+        if re.search(rf"\b{re.escape(s.lower())}\b", t_lower):
+            found_service = s
+            break
+
+    # 2. Version tag validation (e.g. v2.1, 1.0.0, v1.2.0-rc)
+    ver_match = re.search(r"\bv?\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+)?\b", text, re.IGNORECASE)
+    found_version = ver_match.group(0) if ver_match else None
+
+    # 3. Environment validation
+    found_env = None
+    if re.search(r"\bstaging\b", t_lower):
+        found_env = "staging"
+    elif re.search(r"\b(?:production|prod)\b", t_lower):
+        found_env = "production"
+    elif re.search(r"\b(?:development|dev)\b", t_lower):
+        found_env = "development"
+    elif re.search(r"\b(?:test|qa)\b", t_lower):
+        found_env = "test"
+
+    missing = []
+    if not found_service:
+        missing.append("service")
+    if not found_version:
+        missing.append("version")
+    if not found_env:
+        missing.append("environment")
+
+    if missing:
+        services_str = ", ".join(ALLOWED_DEPLOY_SERVICES)
+        return (
+            False,
+            (
+                "Which service, version and environment should I deploy?\n\n"
+                f"- **Allowed Services:** {services_str}\n"
+                "- **Environments:** staging, production\n"
+                "- **Example:** `Deploy payments-api v2.1 to staging`"
+            ),
+            None,
+        )
+
+    payload = {
+        "service_name": found_service,
+        "version_tag": found_version,
+        "target_env": found_env,
     }
+    return True, None, payload
 
 
-def parse_email_details(text: str) -> Dict[str, str]:
-    """Extracts recipient email, subject, and body from text."""
-    email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
-    recipient = email_match.group(0) if email_match else "team@ambientdesk.ai"
+def validate_and_parse_alert(text: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Requires and resolves an alert channel or recipient from the message instead of defaulting."""
+    t_lower = text.lower()
+
+    channel = None
+    body = None
+
+    # Pattern: "send an alert to the team: postgresql storage is above 90%"
+    match = re.search(
+        r"(?:to|channel|for)\s+([#@a-zA-Z0-9_\-\s]+?)(?::\s*|\s+with\s+(?:subject|message)\s+|\s+that\s+|\s+saying\s+)(.+)",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        channel = match.group(1).strip()
+        body = match.group(2).strip()
+    else:
+        # Check if user mentioned "the team" or specific channel without colon
+        for cand in ["the team", "team", "dev-team", "engineering", "devops", "operations", "#general", "#alerts"]:
+            if re.search(rf"\b{re.escape(cand)}\b", t_lower):
+                channel = cand
+                # Extract message body
+                sub_match = re.search(rf"\b{re.escape(cand)}\b\s*[:,-]?\s*(.*)", text, re.IGNORECASE)
+                if sub_match and sub_match.group(1).strip():
+                    body = sub_match.group(1).strip()
+                break
+
+    if not channel:
+        return (
+            False,
+            "Which team channel or recipient should I send the alert to? (e.g. 'the team', '#engineering', 'devops')",
+            None,
+        )
+
+    if not body:
+        # Check if remainder of text has content
+        body = text.strip()
+
+    payload = {
+        "recipient": channel,
+        "subject": f"Urgent Alert: {body[:50]}",
+        "message_body": body,
+    }
+    return True, None, payload
+
+
+def validate_and_parse_email(text: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Validates that a recipient email address appears in the message."""
+    email_match = re.search(r"\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\b", text)
+    if not email_match:
+        return False, "Which recipient email address should I send the email to?", None
+
+    recipient = email_match.group(0)
     subj_match = re.search(r"subject\s*['\"]([^'\"]+)['\"]", text, re.IGNORECASE)
     body_match = re.search(r"body\s*['\"]([^'\"]+)['\"]", text, re.IGNORECASE)
 
     subject = subj_match.group(1) if subj_match else "Notice from AmbientDesk AI"
     body = body_match.group(1) if body_match else text
-    return {"recipient": recipient, "subject": subject, "body": body}
+
+    return True, None, {"recipient": recipient, "subject": subject, "body": body}
 
 
-def parse_deploy_details(text: str) -> Dict[str, str]:
-    """Extracts deployment target environment and service name."""
-    env = "staging" if "staging" in text.lower() else "production"
-    service = "ambientdesk-core"
-    for cand in ["frontend", "backend", "medi-lens", "agent-service", "api-gateway"]:
-        if cand in text.lower():
-            service = cand
-            break
-    return {
-        "target_env": env,
-        "service_name": service,
-        "version_tag": "v1.2.0-rc",
-    }
+def validate_and_parse_fund_transfer(text: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    """Validates that both amount and recipient appear in the message."""
+    amt_match = re.search(r"(\$?\d+(?:,\d{3})*(?:\.\d+)?|\d+\s*(?:dollars?|usd|rs|inr|eur))\b", text, re.IGNORECASE)
+    recipient_match = re.search(r"(?:to|account|recipient)\s+([a-zA-Z0-9_\-@.]+)", text, re.IGNORECASE)
 
+    if not amt_match or not recipient_match:
+        return False, "Please specify both the transfer amount and the recipient account for the payout.", None
 
-def parse_fund_transfer_details(text: str) -> Dict[str, str]:
-    """Extracts recipient account and amount for payout."""
-    amt_match = re.search(r"(\$?\d+(?:,\d{3})*(?:\.\d+)?|\d+\s*(?:dollars?|usd|rs))", text, re.IGNORECASE)
-    amount = amt_match.group(1) if amt_match else "$500.00"
-    target_match = re.search(r"(?:to|account)\s+([a-zA-Z0-9_\-@.]+)", text, re.IGNORECASE)
-    target = target_match.group(1) if target_match else "vendor-account-01"
-    return {
-        "recipient_or_account": target,
+    amount = amt_match.group(1)
+    recipient = recipient_match.group(1)
+
+    return True, None, {
+        "recipient_or_account": recipient,
         "amount": amount,
         "memo": "Authorized payout via AmbientDesk agent",
     }
@@ -93,7 +182,7 @@ def check_intent(state: AgentState) -> Dict[str, Any]:
 
     q_lower = user_query.lower().strip()
 
-    # If query is obviously math or live search or RAG, NEVER trigger approval
+    # Backstop 1: If query is obviously math or live search or RAG, NEVER trigger approval
     if any(q_lower.startswith(pfx) for pfx in [
         "search the live web for:", "search the live web:", "search the web for:", "search web:",
         "calculate the formula:", "calculate formula:", "calculate:", "calculate ",
@@ -101,29 +190,59 @@ def check_intent(state: AgentState) -> Dict[str, Any]:
     ]):
         return {"requires_approval": False}
 
+    # Backstop 2: If query is a question or explanation, NEVER trigger approval
+    if is_question_or_explanation(user_query):
+        return {"requires_approval": False}
+
     # Iterate strictly through registered SIDE_EFFECT tools
     for tool_def in registry.get_side_effect_tools():
         if tool_def.is_triggered_by(user_query):
             tool_name = tool_def.name
             target = "Team / System"
-            payload: Dict[str, Any] = {}
 
-            if "alert" in tool_name or "notification" in tool_name:
-                details = parse_alert_details(user_query)
-                target = details["recipient"]
-                payload = details
-            elif "deploy" in tool_name:
-                details = parse_deploy_details(user_query)
-                target = details["target_env"]
-                payload = details
+            # Argument validation before showing HITL card (Bug 2)
+            if "deploy" in tool_name:
+                valid, clarify_msg, payload = validate_and_parse_deploy(user_query)
+                if not valid:
+                    return {
+                        "requires_approval": False,
+                        "clarification_needed": True,
+                        "clarification_message": clarify_msg,
+                    }
+                target = payload.get("target_env", "staging")
+
+            elif "alert" in tool_name or "notification" in tool_name:
+                valid, clarify_msg, payload = validate_and_parse_alert(user_query)
+                if not valid:
+                    return {
+                        "requires_approval": False,
+                        "clarification_needed": True,
+                        "clarification_message": clarify_msg,
+                    }
+                target = payload.get("recipient", "the team")
+
             elif "email" in tool_name:
-                details = parse_email_details(user_query)
-                target = details["recipient"]
-                payload = details
+                valid, clarify_msg, payload = validate_and_parse_email(user_query)
+                if not valid:
+                    return {
+                        "requires_approval": False,
+                        "clarification_needed": True,
+                        "clarification_message": clarify_msg,
+                    }
+                target = payload.get("recipient", "recipient")
+
             elif "transfer" in tool_name or "payout" in tool_name:
-                details = parse_fund_transfer_details(user_query)
-                target = details["recipient_or_account"]
-                payload = details
+                valid, clarify_msg, payload = validate_and_parse_fund_transfer(user_query)
+                if not valid:
+                    return {
+                        "requires_approval": False,
+                        "clarification_needed": True,
+                        "clarification_message": clarify_msg,
+                    }
+                target = payload.get("recipient_or_account", "account")
+
+            else:
+                payload = {}
 
             # Explicit, transparent approval prompt with tool name, target, and payload
             prompt = (
@@ -184,42 +303,59 @@ def generate_response(state: AgentState) -> Dict[str, Any]:
     return {"messages": [response]}
 
 
+def clarification_node(state: AgentState) -> Dict[str, Any]:
+    """Returns the clarifying question when argument validation detects missing parameters."""
+    msg = state.get("clarification_message", "Could you please clarify your request?")
+    return {"messages": [AIMessage(content=msg)]}
+
+
 def execute_and_respond(state: AgentState) -> Dict[str, Any]:
-    """Executes the approved tool in code and routes the tool result back to the LLM for synthesis."""
+    """Executes the approved tool in code and builds the final reply from the tool's actual return status."""
     tool_name = state.get("tool_name", state.get("action_type", "action"))
     payload = state.get("payload", {})
     tool_def = registry.get(tool_name)
 
     logger.info(f"Executing approved tool '{tool_name}' with payload: {payload}")
-    tool_result = ""
+    raw_res = None
     try:
         if tool_def:
-            tool_result = str(tool_def.func.invoke(payload))
+            raw_res = tool_def.func.invoke(payload)
         else:
-            tool_result = f"Action '{tool_name}' successfully executed on {state.get('target', 'system')}."
+            raw_res = {
+                "status": "simulated",
+                "detail": f"Action '{tool_name}' executed in sandbox environment on {state.get('target', 'system')}.",
+            }
     except Exception as e:
         logger.error(f"Error executing approved tool '{tool_name}': {e}")
-        tool_result = f"Execution note: {str(e)}"
+        raw_res = {"status": "failed", "detail": f"Execution error: {str(e)}"}
 
-    # Feed the tool execution result back to the LLM to write a final synthesized response
-    try:
-        llm = get_llm(model_id=state.get("model_id"))
-        synthesis_prompt = (
-            f"The user authorized the action '{tool_name}'.\n"
-            f"Target: {state.get('target', 'system')}\n"
-            f"Payload: {payload}\n"
-            f"Execution Output: {tool_result}\n\n"
-            "Write a helpful, professional response to the user confirming the successful execution and summarizing the outcome."
+    if isinstance(raw_res, dict):
+        status = raw_res.get("status", "simulated")
+        detail = raw_res.get("detail", str(raw_res))
+    else:
+        status = "simulated"
+        detail = str(raw_res)
+
+    # Bug 3: Build final message strictly based on the real tool return status
+    if status == "simulated":
+        final_text = (
+            f"⚠️ **Simulated: no real {tool_name.replace('_', ' ')} was sent.**\n\n"
+            f"> {detail}"
         )
-        ai_response = llm.invoke([
-            SystemMessage(content="You are AmbientDesk AI, an autonomous intelligence agent."),
-            HumanMessage(content=synthesis_prompt),
-        ])
-        return {"messages": [ai_response], "tool_result": tool_result}
-    except Exception as llm_err:
-        logger.warning(f"Synthesis LLM error: {llm_err}")
-        fallback_text = f"Action **{tool_name}** was approved and executed successfully.\n\n> {tool_result}"
-        return {"messages": [AIMessage(content=fallback_text)], "tool_result": tool_result}
+    elif status in ["sent", "queued"]:
+        final_text = (
+            f"✅ **Action Executed ({status}):**\n\n"
+            f"> {detail}"
+        )
+    elif status == "failed":
+        final_text = (
+            f"❌ **Action Failed:**\n\n"
+            f"> {detail}"
+        )
+    else:
+        final_text = f"Action **{tool_name}** executed per your approval:\n\n> {detail}"
+
+    return {"messages": [AIMessage(content=final_text)], "tool_result": detail}
 
 
 def rejection_response(state: AgentState) -> Dict[str, Any]:
@@ -244,9 +380,11 @@ def rejection_response(state: AgentState) -> Dict[str, Any]:
         return {"messages": [AIMessage(content=fallback_text)]}
 
 
-def route_after_intent(state: AgentState) -> Literal["human_approval", "generate_response"]:
+def route_after_intent(state: AgentState) -> Literal["human_approval", "clarification_node", "generate_response"]:
     if state.get("requires_approval", False):
         return "human_approval"
+    if state.get("clarification_needed", False):
+        return "clarification_node"
     return "generate_response"
 
 
@@ -263,6 +401,7 @@ def create_agent_graph(checkpointer=None):
     # Nodes
     workflow.add_node("check_intent", check_intent)
     workflow.add_node("human_approval", human_approval)
+    workflow.add_node("clarification_node", clarification_node)
     workflow.add_node("generate_response", generate_response)
     workflow.add_node("execute_and_respond", execute_and_respond)
     workflow.add_node("rejection_response", rejection_response)
@@ -274,6 +413,7 @@ def create_agent_graph(checkpointer=None):
         route_after_intent,
         {
             "human_approval": "human_approval",
+            "clarification_node": "clarification_node",
             "generate_response": "generate_response",
         },
     )
@@ -285,6 +425,7 @@ def create_agent_graph(checkpointer=None):
             "rejection_response": "rejection_response",
         },
     )
+    workflow.add_edge("clarification_node", END)
     workflow.add_edge("generate_response", END)
     workflow.add_edge("execute_and_respond", END)
     workflow.add_edge("rejection_response", END)
