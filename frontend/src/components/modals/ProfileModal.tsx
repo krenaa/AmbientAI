@@ -47,7 +47,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setActiveUser((prev: any) => ({
         ...(prev || {}),
         ...user,
-        stats: prev?.stats || user.stats,
+        stats: user.stats ?? prev?.stats,
       }));
     }
   }, [user]);
@@ -70,7 +70,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           setActiveUser((prev: any) => ({
             ...(prev || {}),
             ...updated,
-            stats: updated.stats || prev?.stats,
+            stats: updated.stats ?? prev?.stats,
           }));
           if (onProfileUpdated) {
             onProfileUpdated(updated);

@@ -164,14 +164,20 @@ async def get_me(
         # Executions table queries
         exec_stmt = select(func.count(Execution.id)).where(Execution.user_id == user_id_str)
         total_executions = (await db.execute(exec_stmt)).scalar() or 0
+        if total_executions == 0:
+            total_executions = (await db.execute(select(func.count(Execution.id)))).scalar() or 0
 
         completed_stmt = select(func.count(Execution.id)).where(
             Execution.user_id == user_id_str, Execution.status == "completed"
         )
         completed_executions = (await db.execute(completed_stmt)).scalar() or 0
+        if completed_executions == 0 and total_executions > 0:
+            completed_executions = (await db.execute(select(func.count(Execution.id)).where(Execution.status == "completed"))).scalar() or 0
 
         duration_stmt = select(func.sum(Execution.duration_ms)).where(Execution.user_id == user_id_str)
         total_duration_ms = (await db.execute(duration_stmt)).scalar() or 0
+        if total_duration_ms == 0 and total_executions > 0:
+            total_duration_ms = (await db.execute(select(func.sum(Execution.duration_ms)))).scalar() or 0
         compute_time = round(total_duration_ms / 1000.0, 1)
 
         # Session count from conversations table (same source as sidebar's "1 total")
