@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     DJANGO_SECRET_KEY: Optional[str] = None
     JWT_SECRET_KEY: Optional[str] = None
     JWT_ALGORITHM: str = "HS256"
+    CLERK_JWKS_URL: Optional[str] = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
