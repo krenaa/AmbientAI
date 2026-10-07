@@ -469,14 +469,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span className="text-[#183E6C] font-bold">Native Async Bidirectional</span>
                 </div>
                 <div className="flex items-center justify-between text-[#584134]">
-                  <span>HITL Governance:</span>
-                  <span className="text-[#B84328] font-bold">Checkpoint State Persistence</span>
+                  <span>Agent Role:</span>
+                  <span className="text-[#B84328] font-bold">DevOps Advisor Only</span>
                 </div>
               </div>
             </div>
 
             <div className="p-3 rounded-xl bg-[#F2E9DC]/60 border border-[#D8C7B4] text-[#584134] leading-relaxed text-[11px]">
-              System Administrator mode allows you to execute privileged pipelines, review security checkpoints, and monitor autonomous triage routing.
+              System Administrator mode allows you to inspect execution metrics, manage indexed documents, and monitor query analytics.
             </div>
           </div>
         )}

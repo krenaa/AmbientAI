@@ -4,7 +4,6 @@ import {
   Search,
   Database,
   Calculator,
-  ShieldAlert,
   ArrowUp,
   Cpu,
   ChevronDown,
@@ -114,14 +113,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           >
             <Calculator className="w-3 h-3 text-pink-400" />
             <span>AST Math</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleInsertModality("Execute sensitive operation: ")}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-300 hover:text-white transition-all cursor-pointer whitespace-nowrap"
-          >
-            <ShieldAlert className="w-3 h-3 text-amber-400" />
-            <span>HITL Guardrail</span>
           </button>
         </div>
 

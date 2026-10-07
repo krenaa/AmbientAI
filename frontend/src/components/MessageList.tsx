@@ -122,7 +122,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
           <p className="text-sm font-semibold text-zinc-200">Start an Agent Session</p>
           <p className="text-xs text-zinc-500 max-w-sm mt-1 leading-relaxed">
-            Ask questions, retrieve documentation via pgvector RAG, execute multi-step tools, or run HITL guarded actions.
+            Ask questions, search the live web, retrieve documentation via pgvector RAG, calculate formulas, or get DevOps advisory guidance.
           </p>
         </div>
       ) : null}

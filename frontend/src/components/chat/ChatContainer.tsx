@@ -9,7 +9,6 @@ interface ChatContainerProps {
   outputColor: string;
   isStreaming: boolean;
   currentNodeName?: string;
-  onOpenHitlModal: (task: AgentTask) => void;
   onSelectSuggestedPrompt: (prompt: string) => void;
 }
 
@@ -18,7 +17,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   outputColor,
   isStreaming,
   currentNodeName,
-  onOpenHitlModal,
   onSelectSuggestedPrompt,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -58,7 +56,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>HITL Guardrails</span>
+              <span>DevOps Advisor</span>
             </div>
           </div>
 
@@ -77,7 +75,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         outputColor={outputColor}
         isStreaming={isStreaming}
         currentNodeName={currentNodeName}
-        onOpenHitlModal={onOpenHitlModal}
       />
       <div ref={bottomRef} className="h-6" />
     </div>

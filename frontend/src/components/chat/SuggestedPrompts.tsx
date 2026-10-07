@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Database, Calculator, ShieldAlert, Sparkles, ArrowUpRight } from "lucide-react";
+import { Search, Database, Calculator, Sparkles, ArrowUpRight } from "lucide-react";
 
 interface SuggestedPromptsProps {
   onSelectPrompt: (prompt: string) => void;
@@ -29,7 +29,7 @@ const SUGGESTED_PROMPTS: PromptCard[] = [
     badge: "pgvector RAG",
     badgeColor: "border-purple-500/30 bg-purple-500/10 text-purple-400",
     icon: <Database className="w-4 h-4 text-purple-400" />,
-    prompt: "Retrieve enterprise policies regarding cloud infrastructure security and automated human-in-the-loop approvals.",
+    prompt: "Retrieve enterprise policies regarding cloud infrastructure security and access controls.",
   },
   {
     title: "Deterministic AST Math",
@@ -40,12 +40,12 @@ const SUGGESTED_PROMPTS: PromptCard[] = [
     prompt: "Calculate compound interest: Principal = $150,000, rate = 5.25% annually compounded monthly for 8 years.",
   },
   {
-    title: "Human-in-the-Loop Action",
-    category: "Sensitive Guardrail Trigger",
-    badge: "HITL Guardrail",
+    title: "DevOps & Engineering Advisor",
+    category: "Step-by-Step Runbooks & Drafts",
+    badge: "Advisor Guidance",
     badgeColor: "border-amber-500/30 bg-amber-500/10 text-amber-400",
-    icon: <ShieldAlert className="w-4 h-4 text-amber-400" />,
-    prompt: "Initiate database disaster recovery failover and rotate production JWT signing keys.",
+    icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+    prompt: "Deploy payments-api v2.1 to staging",
   },
 ];
 

@@ -177,9 +177,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ? "bg-amber-500/20 text-amber-300 font-semibold"
                   : "text-zinc-400 hover:text-amber-300"
               }`}
-              title="Needs Approval"
+              title="Advisory Guidance"
             >
-              <span>HITL</span>
+              <span>Advisory</span>
               <span className="text-[8px] text-amber-400/80">{counts.action}</span>
             </button>
             <button

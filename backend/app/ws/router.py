@@ -8,7 +8,6 @@ import uuid
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langgraph.types import Command
 from sqlalchemy import select
 
 from app.agent.doc_matcher import (
@@ -160,7 +159,12 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
     if token:
         try:
             if settings.CLERK_JWKS_URL:
-                user_id = verify_clerk_token(token)
+                try:
+                    user_id = verify_clerk_token(token)
+                except Exception:
+                    payload = decode_access_token(token)
+                    if payload and payload.get("sub"):
+                        user_id = str(payload["sub"])
             else:
                 payload = decode_access_token(token)
                 if payload and payload.get("sub"):
@@ -197,71 +201,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                 await manager.send_json(websocket, {"type": "pong"})
                 continue
 
-            # 2. Resuming HITL Approval
-            elif event_type == "approval_response":
-                decision = payload.get("decision", "rejected")  # "approved" or "rejected"
-                task_id = payload.get("task_id", str(uuid.uuid4()))
-
-                await manager.send_json(
-                    websocket,
-                    {
-                        "type": "status",
-                        "status": "processing",
-                        "content": f"Resuming execution with decision: {decision}...",
-                    },
-                )
-
-                # Resume the interrupted graph with human approval decision
-                resume_cmd = Command(resume={"action": decision})
-                res = graph.invoke(resume_cmd, config=thread_config)
-
-                output_msg = res["messages"][-1].content
-
-                # Stream the synthesized final response
-                await manager.send_json(
-                    websocket,
-                    {"type": "token", "content": output_msg},
-                )
-                await manager.send_json(
-                    websocket,
-                    {
-                        "type": "complete",
-                        "status": "completed" if decision == "approved" else "rejected",
-                        "task_id": task_id,
-                    },
-                )
-
-                # Update Execution record in DB
-                try:
-                    async with AsyncSessionLocal() as db:
-                        stmt = (
-                            select(Execution)
-                            .where(Execution.session_id == conversation_id, Execution.user_id == user_id)
-                            .order_by(Execution.started_at.desc())
-                            .limit(1)
-                        )
-                        exec_res = await db.execute(stmt)
-                        exec_rec = exec_res.scalar_one_or_none()
-                        if exec_rec:
-                            exec_rec.status = "completed" if decision == "approved" else "rejected"
-                            exec_rec.finished_at = datetime.now(timezone.utc)
-                            if exec_rec.started_at:
-                                exec_rec.duration_ms = int(
-                                    (exec_rec.finished_at - exec_rec.started_at).total_seconds() * 1000
-                                )
-                            await db.commit()
-                except Exception as exec_up_err:
-                    logger.debug(f"Execution resume record update note: {exec_up_err}")
-
-                # Save assistant response to DB
-                await save_message_to_db(
-                    conversation_id,
-                    "assistant",
-                    output_msg,
-                    user_id=user_id,
-                )
-
-            # 3. Stop / Abort Request
+            # 2. Stop / Abort Request
             elif event_type == "stop":
                 logger.info(f"Received stop request for conversation {conversation_id}")
                 await manager.send_json(
@@ -474,59 +414,7 @@ async def chat_websocket_endpoint(websocket: WebSocket, conversation_id: str):
                         continue
 
                 # -------------------------------------------------------------
-                # DETERMINISTIC CHECK E: LangGraph StateGraph & Risk-based HITL (Requirements 1 & 2)
-                # -------------------------------------------------------------
-                state = {
-                    "messages": [HumanMessage(content=user_text)],
-                    "task_id": task_id,
-                    "user_query": user_text,
-                    "model_id": selected_model,
-                    "requires_approval": False,
-                    "approval_prompt": None,
-                    "approval_status": None,
-                    "action_type": None,
-                    "clarification_needed": False,
-                    "clarification_message": None,
-                    "stream_handled": True,
-                }
-
-                graph.invoke(state, config=thread_config)
-                snapshot = graph.get_state(thread_config)
-
-                # Check if paused on HITL approval
-                if snapshot.tasks and len(snapshot.tasks) > 0 and snapshot.tasks[0].interrupts:
-                    interrupt_val = snapshot.tasks[0].interrupts[0].value
-                    prompt = interrupt_val.get("prompt", "Approval required")
-                    tool_n = interrupt_val.get("tool_name", "action")
-                    target_val = interrupt_val.get("target", "system")
-                    payload_val = interrupt_val.get("payload", {})
-
-                    await manager.send_json(
-                        websocket,
-                        {
-                            "type": "interrupt",
-                            "status": "awaiting_approval",
-                            "prompt": prompt,
-                            "tool_name": tool_n,
-                            "target": target_val,
-                            "payload": payload_val,
-                            "task_id": task_id,
-                        },
-                    )
-                    await finalize_execution(status="awaiting_approval", tool_used=tool_n)
-                    continue
-
-                # Check if a clarifying question was generated (e.g. missing deploy args or missing alert channel)
-                if snapshot.values.get("clarification_needed"):
-                    clarify_text = snapshot.values.get("clarification_message") or "Could you please clarify your request?"
-                    await manager.send_json(websocket, {"type": "token", "content": clarify_text, "task_id": task_id})
-                    await manager.send_json(websocket, {"type": "complete", "status": "completed", "task_id": task_id})
-                    await save_message_to_db(conversation_id, "assistant", clarify_text, user_id=user_id)
-                    await finalize_execution(status="completed", tool_used="clarification")
-                    continue
-
-                # -------------------------------------------------------------
-                # DETERMINISTIC CHECK F: Live Web Search or General Inquiry (Requirements 2)
+                # DETERMINISTIC CHECK E: Live Web Search or General Inquiry
                 # -------------------------------------------------------------
                 lowered_text = user_text.lower().strip()
                 is_web_search = False

@@ -8,8 +8,8 @@ logger = logging.getLogger("ambientai.agent.registry")
 
 
 class ToolRisk(str, Enum):
-    READ_ONLY = "READ_ONLY"      # Never requires human approval
-    SIDE_EFFECT = "SIDE_EFFECT"  # Modifies state, contacts people, spends funds, or deploys -> requires HITL approval
+    READ_ONLY = "READ_ONLY"      # Autonomous read-only intelligence tool
+    SIDE_EFFECT = "SIDE_EFFECT"  # Kept for backwards compatibility; no side-effect execution tools exist
 
 
 QUESTION_EXPLANATION_PREFIXES = (
@@ -18,46 +18,19 @@ QUESTION_EXPLANATION_PREFIXES = (
     "can you explain", "could you explain", "tell me about", "tell me what", "tell me how",
 )
 
-IMPERATIVE_VERBS = (
-    "deploy", "release", "ship", "roll out", "send", "raise", "trigger",
-    "notify", "write", "transfer", "payout", "pay", "execute",
-)
-
-GOVERNED_INTENT_PATTERNS = {
-    "deploy_service": re.compile(r"\b(?:deploy|release|ship|roll\s*out)\b", re.IGNORECASE),
-    "send_alert": re.compile(
-        r"(?:\b(?:send|raise|trigger)\b[\w\s]{0,25}\b(?:alert|notify|notification)\b|\bnotify\b)",
-        re.IGNORECASE,
-    ),
-    "send_external_notification": re.compile(
-        r"(?:\b(?:send|raise|trigger)\b[\w\s]{0,25}\b(?:alert|notify|notification)\b|\bnotify\b)",
-        re.IGNORECASE,
-    ),
-    "send_email": re.compile(r"\b(?:send|write)\b[\w\s]{0,20}\bemail\b", re.IGNORECASE),
-    "execute_fund_transfer_or_payout": re.compile(r"\b(?:transfer|payout|pay)\b", re.IGNORECASE),
-}
-
 
 def is_question_or_explanation(query: str) -> bool:
-    """Detects whether a user prompt is asking a question or seeking an explanation.
-    If True, governed (state-changing) tools must NEVER be bound or triggered.
-    Rule 1: Starts with what/how/why/when/which/where/explain/describe/compare/difference.
-    Rule 2: Ends with '?' and does NOT contain an imperative verb at the root command.
-    """
+    """Detects whether a user prompt is asking a question or seeking an explanation."""
     clean = re.sub(r"^[\s\"'`]+", "", query).lower().strip()
     if not clean:
         return False
 
-    # Check question / explanation prefixes
     for pfx in QUESTION_EXPLANATION_PREFIXES:
         if clean.startswith(pfx):
             return True
 
-    # Check trailing '?'
     if clean.endswith("?") or re.search(r"\?\s*$", clean):
-        has_imperative = any(re.search(rf"\b{re.escape(verb)}\b", clean) for verb in IMPERATIVE_VERBS)
-        if not has_imperative:
-            return True
+        return True
 
     return False
 
@@ -69,19 +42,11 @@ class ToolDefinition:
     risk: ToolRisk
     func: Callable
     explicit_intent_keywords: List[str] = field(default_factory=list)
-    target_param: Optional[str] = None  # Argument identifying target/recipient
+    target_param: Optional[str] = None
     category: str = "general"
 
     def is_triggered_by(self, user_query: str) -> bool:
         """Determines if the user's explicit query contains intent for this tool."""
-        # Governed side-effect tools must NEVER be triggered by questions or explanations
-        if self.risk == ToolRisk.SIDE_EFFECT:
-            if is_question_or_explanation(user_query):
-                return False
-
-            if self.name in GOVERNED_INTENT_PATTERNS:
-                return bool(GOVERNED_INTENT_PATTERNS[self.name].search(user_query))
-
         if not self.explicit_intent_keywords:
             return False
 
@@ -107,13 +72,12 @@ class ToolRegistry:
         return [t for t in self._tools.values() if t.risk == ToolRisk.READ_ONLY]
 
     def get_side_effect_tools(self) -> List[ToolDefinition]:
-        return [t for t in self._tools.values() if t.risk == ToolRisk.SIDE_EFFECT]
+        return []
 
     def filter_tools_for_query(self, query: str, mode: Optional[str] = None) -> List[ToolDefinition]:
-        """Strict deterministic tool gating:
+        """Strict deterministic tool gating for read-only tools:
         1. If mode chip is set, strictly restrict to that category.
-        2. If message is a question or explanation, bind ONLY read-only tools.
-        3. For imperative messages, bind governed tools only if their intent regex matches.
+        2. Otherwise returns registered read-only tools.
         """
         q_lower = query.lower().strip()
 
@@ -134,48 +98,33 @@ class ToolRegistry:
         ]):
             return [t for t in self._tools.values() if t.name == "calculate_expression"]
 
-        read_only = self.get_read_only_tools()
-
-        # Bug 1 Gate 1: If question or explanation, bind ONLY read-only tools
-        if is_question_or_explanation(query):
-            return read_only
-
-        # Bug 1 Gate 2: For imperative messages, bind governed tool only if regex matches
-        available: List[ToolDefinition] = list(read_only)
-        for tool_def in self.get_side_effect_tools():
-            if tool_def.is_triggered_by(query):
-                available.append(tool_def)
-
-        return available
+        return self.get_read_only_tools()
 
     def format_capabilities_summary(self) -> str:
         """Dynamically generates capabilities documentation for the LLM system prompt and 'what can you do' queries."""
         read_only = self.get_read_only_tools()
-        side_effect = self.get_side_effect_tools()
 
         lines = [
-            "### AmbientDesk AI Agent Capabilities & Tool Registry",
+            "### Ambient Agent Capabilities & Tool Registry",
             "",
-            "#### 1. Read-Only Intelligence Tools (Autonomous Execution - No Approval Needed):",
+            "#### 1. Read-Only Intelligence Tools (Autonomous Execution):",
         ]
         for t in read_only:
             lines.append(f"- **`{t.name}`**: {t.description.splitlines()[0]}")
 
         lines.extend([
             "",
-            "#### 2. Governed Action Tools (Human-in-the-Loop Approval Required Before Execution):",
-        ])
-        for t in side_effect:
-            lines.append(f"- **`{t.name}`**: {t.description.splitlines()[0]}")
-
-        lines.extend([
+            "#### 2. DevOps & Engineering Advisory Role (Advisor Only):",
+            "- For any action request (deployments, alerts, restarts, database changes, infrastructure):",
+            "  - Ambient Agent has NO ability to execute actions, modify infrastructure, run commands, or contact anyone.",
+            "  - Always replies with: 'I can't execute this myself, but here's how to do it:', followed by numbered steps, a 'Before you do this' checklist for risky tasks, and copyable drafts.",
             "",
             "#### 3. Strict Limitations & What I CANNOT Do:",
+            "- Cannot execute terminal commands, modify cloud infrastructure, or deploy code.",
+            "- Cannot send live notifications, SMS, emails, or trigger alert webhooks directly.",
             "- Cannot browse authenticated/logged-in private web accounts.",
-            "- Cannot execute arbitrary bash/powershell terminal commands or malicious scripts.",
             "- Cannot access local files that have not been uploaded to the Knowledge Base.",
-            "- Cannot make airline bookings, reserve hotels, order products, or make purchases without an authorized API.",
-            "- Cannot fabricate real-time data if live web search returns no results.",
+            "- Cannot make airline bookings, reserve hotels, order products, or make purchases.",
         ])
 
         return "\n".join(lines)

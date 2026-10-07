@@ -3,14 +3,6 @@ import { toast } from "react-hot-toast";
 import type { Message, StreamTokenPayload } from "../types";
 import { API_BASE_URL, getMessages, getAuthToken } from "../services/api";
 
-export interface HITLApprovalState {
-  taskId: string;
-  prompt: string;
-  toolName?: string;
-  target?: string;
-  payload?: Record<string, any>;
-}
-
 // Module-level in-memory cache + session storage for instant 0ms switching
 const messagesCache = new Map<string, Message[]>();
 const CACHE_PREFIX = "ambient_chat_cache_";
@@ -62,7 +54,6 @@ export function useWebSocket(
   const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [hitlApproval, setHitlApproval] = useState<HITLApprovalState | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
@@ -216,24 +207,6 @@ export function useWebSocket(
           });
         }
 
-        // HITL Interrupt pause
-        else if (payload.type === "interrupt") {
-          setIsProcessing(false);
-          setStatusMessage(null);
-          const promptText = payload.prompt || "Human approval required.";
-          setHitlApproval({
-            taskId: payload.task_id || "task-" + Date.now(),
-            prompt: promptText,
-            toolName: (payload as any).tool_name,
-            target: (payload as any).target,
-            payload: (payload as any).payload,
-          });
-          toast("Action paused — Human approval needed!", {
-            icon: "⚠️",
-            duration: 6000,
-          });
-        }
-
         // Task Completed
         else if (payload.type === "complete") {
           setIsProcessing(false);
@@ -304,35 +277,6 @@ export function useWebSocket(
     [conversationId, updateMessages]
   );
 
-  const sendApproval = useCallback(
-    (decision: "approved" | "rejected") => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        toast.error("WebSocket disconnected", { id: "ws-status" });
-        return;
-      }
-
-      const taskId = hitlApproval?.taskId || "task-resumed";
-      setHitlApproval(null);
-      setIsProcessing(true);
-      setStatusMessage(`Resuming with ${decision}...`);
-
-      wsRef.current.send(
-        JSON.stringify({
-          type: "approval_response",
-          decision,
-          task_id: taskId,
-        })
-      );
-
-      if (decision === "approved") {
-        toast.success("Security Action Approved • Resuming workflow...", { id: "hitl-action" });
-      } else {
-        toast("Action Rejected by user • Execution halted", { icon: "🛑", id: "hitl-action" });
-      }
-    },
-    [hitlApproval]
-  );
-
   const stopGenerating = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
@@ -352,9 +296,7 @@ export function useWebSocket(
     isConnected,
     isProcessing,
     statusMessage,
-    hitlApproval,
     sendMessage,
-    sendApproval,
     stopGenerating,
   };
 }

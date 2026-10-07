@@ -4,7 +4,6 @@ import time
 from typing import Any, Dict, Optional
 import uuid
 from langchain_core.messages import HumanMessage
-from langgraph.types import Command
 from sqlalchemy import select
 
 from app.agent.graph import agent_graph
@@ -75,94 +74,21 @@ async def execute_task_workflow(
         config = {"configurable": {"thread_id": str(task.id)}}
 
         try:
-            if human_approved is not None:
-                # Resuming from a human approval decision (Approve or Reject)
-                if not human_approved:
-                    # Explicit rejection
-                    task.status = "completed"
-                    task.output = "Action was rejected by user."
-                    task.approval_prompt = None
-                    task.execution_time_ms = (time.perf_counter() - start_time) * 1000.0
-                    await session.commit()
-
-                    await manager.broadcast_task_event(
-                        str(task.id),
-                        {
-                            "task_id": str(task.id),
-                            "status": "completed",
-                            "output": task.output,
-                            "approval_prompt": None,
-                        },
-                    )
-                    return
-
-                # Human approved: resume execution
-                graph_result = await agent_graph.ainvoke(
-                    Command(resume={"approved": True}),
-                    config=config,
-                )
-            else:
-                # Initial execution or follow-up prompt
-                effective_prompt = prompt if prompt else task.prompt
-                initial_state = {
-                    "messages": [HumanMessage(content=effective_prompt)],
-                    "task_id": str(task.id),
-                    "user_id": str(task.user_id),
-                    "triage": None,
-                    "requires_approval": False,
-                    "approval_status": None,
-                    "approval_payload": None,
-                    "selected_model": model,
-                    "final_output": None,
-                    "error": None,
-                }
-                graph_result = await agent_graph.ainvoke(initial_state, config=config)
-
-            state_snapshot = agent_graph.get_state(config)
+            effective_prompt = prompt if prompt else task.prompt
+            initial_state = {
+                "messages": [HumanMessage(content=effective_prompt)],
+                "task_id": str(task.id),
+                "user_id": str(task.user_id),
+                "triage": None,
+                "requires_approval": False,
+                "approval_status": None,
+                "approval_payload": None,
+                "selected_model": model,
+                "final_output": None,
+                "error": None,
+            }
+            graph_result = await agent_graph.ainvoke(initial_state, config=config)
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-
-            # 2. Check if execution paused at an interrupt (HITL)
-            if state_snapshot.next:
-                interrupt_value = None
-                if state_snapshot.tasks and state_snapshot.tasks[0].interrupts:
-                    interrupt_value = state_snapshot.tasks[0].interrupts[0].value
-
-                action_desc = "Action requires human approval before executing."
-                if isinstance(interrupt_value, dict):
-                    action_desc = (
-                        interrupt_value.get("action_summary")
-                        or interrupt_value.get("question")
-                        or str(interrupt_value)
-                    )
-                elif interrupt_value:
-                    action_desc = str(interrupt_value)
-
-                task.status = "awaiting_approval"
-                task.approval_prompt = action_desc
-                task.triage_category = "sensitive_action"
-                task.execution_time_ms = elapsed_ms
-                await session.commit()
-
-                # Log HITL interruption
-                log_entry = TaskExecutionLog(
-                    task_id=task.id,
-                    node_name="approval_interrupted",
-                    message=f"Awaiting human approval: {action_desc}",
-                    metadata_={"interrupt": interrupt_value} if isinstance(interrupt_value, dict) else {},
-                )
-                session.add(log_entry)
-                await session.commit()
-
-                await manager.broadcast_task_event(
-                    str(task.id),
-                    {
-                        "task_id": str(task.id),
-                        "status": "awaiting_approval",
-                        "approval_prompt": action_desc,
-                        "triage_category": "sensitive_action",
-                    },
-                )
-                return
 
             # 3. Task completed successfully
             output_text = ""

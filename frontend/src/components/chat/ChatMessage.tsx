@@ -3,10 +3,8 @@ import {
   User,
   Copy,
   Check,
-  ShieldAlert,
   Clock,
   AlertTriangle,
-  ArrowRight
 } from "lucide-react";
 import type { AgentTask } from "../../types";
 import { MarkdownRenderer } from "../../MarkdownRenderer";
@@ -20,7 +18,6 @@ interface ChatMessageProps {
   outputColor: string;
   isStreaming?: boolean;
   currentNodeName?: string;
-  onOpenHitlModal: (task: AgentTask) => void;
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -28,7 +25,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   outputColor,
   isStreaming = false,
   currentNodeName,
-  onOpenHitlModal,
 }) => {
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
@@ -132,26 +128,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 {/* Show Live Thinking Indicator on Latest Turn if processing */}
                 {isLatestTurn && task.status === "processing" && (
                   <ThinkingIndicator currentNodeName={currentNodeName} isProcessing={true} />
-                )}
-
-                {/* HITL Awaiting Approval Notice on Latest Turn */}
-                {isLatestTurn && task.status === "awaiting_approval" && (
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-3 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-                      <ShieldAlert className="w-4 h-4 text-amber-400" />
-                      <span>Human-in-the-Loop Approval Required</span>
-                    </div>
-                    <p className="text-xs leading-relaxed text-amber-200/90">
-                      {task.approval_prompt || "The agent has generated an action that touches sensitive operations. Please review and authorize execution."}
-                    </p>
-                    <button
-                      onClick={() => onOpenHitlModal(task)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all cursor-pointer shadow-sm active:scale-[0.98]"
-                    >
-                      <span>Review & Authorize</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
                 )}
 
                 {/* Output Content Card */}

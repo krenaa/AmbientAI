@@ -17,7 +17,6 @@ import {
 import { toast } from "react-hot-toast";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { MessageList } from "./MessageList";
-import { ApprovalPrompt } from "./ApprovalPrompt";
 import { KnowledgeModal } from "./modals/KnowledgeModal";
 import { fetchAvailableModels } from "../api";
 import type { ModelOption } from "../types";
@@ -118,9 +117,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isConnected,
     isProcessing,
     statusMessage,
-    hitlApproval,
     sendMessage,
-    sendApproval,
     stopGenerating,
   } = useWebSocket(conversationId, handleModelFallback);
 
@@ -263,21 +260,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onResubmitPrompt={handleResubmitPrompt}
       />
 
-      {/* HITL Approval Prompt (if active) */}
-      {hitlApproval && (
-        <div className="px-6 pb-2">
-          <ApprovalPrompt
-            prompt={hitlApproval.prompt}
-            toolName={hitlApproval.toolName}
-            target={hitlApproval.target}
-            payload={hitlApproval.payload}
-            onApprove={() => sendApproval("approved")}
-            onReject={() => sendApproval("rejected")}
-            isProcessing={isProcessing}
-          />
-        </div>
-      )}
-
       {/* Input Bar with Model Dropdown & Upload PDF INSIDE message box */}
       <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md shrink-0 relative z-30">
         <div className="max-w-4xl mx-auto space-y-2">
@@ -305,13 +287,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             >
               AST Math
             </button>
-            <button
-              type="button"
-              onClick={() => handleResubmitPrompt("Send notification email to operations@ambientdesk.ai with subject 'Security Alert' and body 'Action executed'")}
-              className="px-2 py-0.5 rounded-full bg-zinc-800/90 hover:bg-zinc-700/90 text-[#1C120C] hover:text-amber-800 border border-zinc-700/70 text-[11px] font-semibold transition-colors cursor-pointer"
-            >
-              HITL Guardrail
-            </button>
           </div>
 
           <form onSubmit={handleSend} className="space-y-2">
@@ -323,13 +298,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder={
-                  hitlApproval
-                    ? "Action paused: Please respond to approval prompt above..."
-                    : isProcessing
+                  isProcessing
                     ? `Generating answer using ${selectedModelObj?.name || selectedModel}...`
                     : `Ask with ${selectedModelObj?.name || selectedModel}... (e.g. search web, pgvector RAG, AST math)`
                 }
-                disabled={isProcessing || !!hitlApproval}
+                disabled={isProcessing}
                 className="w-full bg-transparent py-1 text-sm text-[#1C120C] font-medium placeholder-[#7C6355] focus:outline-none disabled:opacity-50"
               />
 
@@ -468,7 +441,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 ) : (
                   <button
                     type="submit"
-                    disabled={!inputText.trim() || !!hitlApproval}
+                    disabled={!inputText.trim()}
                     className="px-3.5 py-1.5 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
                     title={`Send with ${selectedModelObj?.name || selectedModel}`}
                   >

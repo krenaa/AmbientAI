@@ -50,7 +50,7 @@ export const CATEGORY_THEMES: Record<string, CategoryTheme> = {
     badgeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300",
     gradient: "from-amber-400 via-orange-300 to-yellow-300",
     accentBar: "from-amber-500 via-orange-500 to-yellow-500",
-    label: "HITL Guardrail Checkpoint",
+    label: "DevOps Advisory Guidance",
     iconColor: "text-amber-400",
     activeSidebar: "border-amber-500/40 bg-amber-500/[0.06] border-l-2 border-l-amber-400",
     heroBg: "from-amber-950/20 via-zinc-900/50 to-zinc-950/80",
@@ -148,8 +148,8 @@ export const getNodeBadgeStyle = (name: string): { label: string; badge: string;
   if (n.includes("calc") || n.includes("math")) {
     return { label: "Deterministic AST Math", badge: "bg-pink-500/10 text-pink-300 border-pink-500/20", icon: "calc" };
   }
-  if (n.includes("guard") || n.includes("hitl") || n.includes("sensit") || n.includes("approval")) {
-    return { label: "HITL Security Guardrail", badge: "bg-amber-500/10 text-amber-300 border-amber-500/20", icon: "shield" };
+  if (n.includes("guard") || n.includes("hitl") || n.includes("sensit") || n.includes("advisor") || n.includes("approval")) {
+    return { label: "DevOps Advisory", badge: "bg-amber-500/10 text-amber-300 border-amber-500/20", icon: "shield" };
   }
   if (n.includes("complete") || n.includes("direct") || n.includes("answer") || n.includes("response")) {
     return { label: "Neural Synthesis", badge: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", icon: "sparkles" };

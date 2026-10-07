@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
-        description="AmbientAI minimal core: FastAPI, LangGraph HITL, pgvector RAG, and WebSockets.",
+        description="AmbientAI minimal core: FastAPI, LangGraph, pgvector RAG, and WebSockets.",
         version="1.0.0",
         lifespan=lifespan,
     )
