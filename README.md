@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![AmbientDesk AI Banner](docs/images/banner.jpg)
+
 
 ### **Autonomous Multi-Agent AI Workspace with Human-in-the-Loop (HITL) Guardrails, pgvector RAG & Real-Time Streaming**
 
